@@ -1,0 +1,3123 @@
+en all timestamps are in bytes and
+ * are the file position (this may not be supported by all demuxers).
+ * If flags contain AVSEEK_FLAG_FRAME, then all timestamps are in frames
+ * in the stream with stream_index (this may not be supported by all demuxers).
+ * Otherwise all timestamps are in units of the stream selected by stream_index
+ * or if stream_index is -1, in AV_TIME_BASE units.
+ * If flags contain AVSEEK_FLAG_ANY, then non-keyframes are treated as
+ * keyframes (this may not be supported by all demuxers).
+ * If flags contain AVSEEK_FLAG_BACKWARD, it is ignored.
+ *
+ * @param s media file handle
+ * @param stream_index index of the stream which is used as time base reference
+ * @param min_ts smallest acceptable timestamp
+ * @param ts target timestamp
+ * @param max_ts largest acceptable timestamp
+ * @param flags flags
+ * @return >=0 on success, error code otherwise
+ *
+ * @note This is part of the new seek API which is still under construction.
+ *       Thus do not use this yet. It may change at any time, do not expect
+ *       ABI compatibility yet!
+ */
+int avformat_seek_file(AVFormatContext *s, int stream_index, int64_t min_ts, int64_t ts, int64_t max_ts, int flags);
+
+/**
+ * Start playing a network-based stream (e.g. RTSP stream) at the
+ * current position.
+ */
+int av_read_play(AVFormatContext *s);
+
+/**
+ * Pause a network-based stream (e.g. RTSP stream).
+ *
+ * Use av_read_play() to resume it.
+ */
+int av_read_pause(AVFormatContext *s);
+
+#if FF_API_CLOSE_INPUT_FILE
+/**
+ * @deprecated use avformat_close_input()
+ * Close a media file (but not its codecs).
+ *
+ * @param s media file handle
+ */
+attribute_deprecated
+void av_close_input_file(AVFormatContext *s);
+#endif
+
+/**
+ * Close an opened input AVFormatContext. Free it and all its contents
+ * and set *s to NULL.
+ */
+void avformat_close_input(AVFormatContext **s);
+/**
+ * @}
+ */
+
+#if FF_API_NEW_STREAM
+/**
+ * Add a new stream to a media file.
+ *
+ * Can only be called in the read_header() function. If the flag
+ * AVFMTCTX_NOHEADER is in the format context, then new streams
+ * can be added in read_packet too.
+ *
+ * @param s media file handle
+ * @param id file-format-dependent stream ID
+ */
+attribute_deprecated
+AVStream *av_new_stream(AVFormatContext *s, int id);
+#endif
+
+#if FF_API_SET_PTS_INFO
+/**
+ * @deprecated this function is not supposed to be called outside of lavf
+ */
+attribute_deprecated
+void av_set_pts_info(AVStream *s, int pts_wrap_bits,
+                     unsigned int pts_num, unsigned int pts_den);
+#endif
+
+#define AVSEEK_FLAG_BACKWARD 1 ///< seek backward
+#define AVSEEK_FLAG_BYTE     2 ///< seeking based on position in bytes
+#define AVSEEK_FLAG_ANY      4 ///< seek to any frame, even non-keyframes
+#define AVSEEK_FLAG_FRAME    8 ///< seeking based on frame number
+
+/**
+ * @addtogroup lavf_encoding
+ * @{
+ */
+/**
+ * Allocate the stream private data and write the stream header to
+ * an output media file.
+ *
+ * @param s Media file handle, must be allocated with avformat_alloc_context().
+ *          Its oformat field must be set to the desired output format;
+ *          Its pb field must be set to an already opened AVIOContext.
+ * @param options  An AVDictionary filled with AVFormatContext and muxer-private options.
+ *                 On return this parameter will be destroyed and replaced with a dict containing
+ *                 options that were not found. May be NULL.
+ *
+ * @return 0 on success, negative AVERROR on failure.
+ *
+ * @see av_opt_find, av_dict_set, avio_open, av_oformat_next.
+ */
+int avformat_write_header(AVFormatContext *s, AVDictionary **options);
+
+/**
+ * Write a packet to an output media file.
+ *
+ * This function passes the packet directly to the muxer, without any buffering
+ * or reordering. The caller is responsible for correctly interleaving the
+ * packets if the format requires it. Callers that want libavformat to handle
+ * the interleaving should call av_interleaved_write_frame() instead of this
+ * function.
+ *
+ * @param s media file handle
+ * @param pkt The packet containing the data to be written. Note that unlike
+ *            av_interleaved_write_frame(), this function does not take
+ *            ownership of the packet passed to it (though some muxers may make
+ *            an internal reference to the input packet).
+ *            <br>
+ *            This parameter can be NULL (at any time, not just at the end), in
+ *            order to immediately flush data buffered within the muxer, for
+ *            muxers that buffer up data internally before writing it to the
+ *            output.
+ *            <br>
+ *            Packet's @ref AVPacket.stream_index "stream_index" field must be
+ *            set to the index of the corresponding stream in @ref
+ *            AVFormatContext.streams "s->streams". It is very strongly
+ *            recommended that timing information (@ref AVPacket.pts "pts", @ref
+ *            AVPacket.dts "dts", @ref AVPacket.duration "duration") is set to
+ *            correct values.
+ * @return < 0 on error, = 0 if OK, 1 if flushed and there is no more data to flush
+ *
+ * @see av_interleaved_write_frame()
+ */
+int av_write_frame(AVFormatContext *s, AVPacket *pkt);
+
+/**
+ * Write a packet to an output media file ensuring correct interleaving.
+ *
+ * This function will buffer the packets internally as needed to make sure the
+ * packets in the output file are properly interleaved in the order of
+ * increasing dts. Callers doing their own interleaving should call
+ * av_write_frame() instead of this function.
+ *
+ * @param s media file handle
+ * @param pkt The packet containing the data to be written.
+ *            <br>
+ *            If the packet is reference-counted, this function will take
+ *            ownership of this reference and unreference it later when it sees
+ *            fit.
+ *            The caller must not access the data through this reference after
+ *            this function returns. If the packet is not reference-counted,
+ *            libavformat will make a copy.
+ *            <br>
+ *            This parameter can be NULL (at any time, not just at the end), to
+ *            flush the interleaving queues.
+ *            <br>
+ *            Packet's @ref AVPacket.stream_index "stream_index" field must be
+ *            set to the index of the corresponding stream in @ref
+ *            AVFormatContext.streams "s->streams". It is very strongly
+ *            recommended that timing information (@ref AVPacket.pts "pts", @ref
+ *            AVPacket.dts "dts", @ref AVPacket.duration "duration") is set to
+ *            correct values.
+ *
+ * @return 0 on success, a negative AVERROR on error. Libavformat will always
+ *         take care of freeing the packet, even if this function fails.
+ *
+ * @see av_write_frame(), AVFormatContext.max_interleave_delta
+ */
+int av_interleaved_write_frame(AVFormatContext *s, AVPacket *pkt);
+
+/**
+ * Write a uncoded frame to an output media file.
+ *
+ * The frame must be correctly interleaved according to the container
+ * specification; if not, then av_interleaved_write_frame() must be used.
+ *
+ * See av_interleaved_write_frame() for details.
+ */
+int av_write_uncoded_frame(AVFormatContext *s, int stream_index,
+                           AVFrame *frame);
+
+/**
+ * Write a uncoded frame to an output media file.
+ *
+ * If the muxer supports it, this function allows to write an AVFrame
+ * structure directly, without encoding it into a packet.
+ * It is mostly useful for devices and similar special muxers that use raw
+ * video or PCM data and will not serialize it into a byte stream.
+ *
+ * To test whether it is possible to use it with a given muxer and stream,
+ * use av_write_uncoded_frame_query().
+ *
+ * The caller gives up ownership of the frame and must not access it
+ * afterwards.
+ *
+ * @return  >=0 for success, a negative code on error
+ */
+int av_interleaved_write_uncoded_frame(AVFormatContext *s, int stream_index,
+                                       AVFrame *frame);
+
+/**
+ * Test whether a muxer supports uncoded frame.
+ *
+ * @return  >=0 if an uncoded frame can be written to that muxer and stream,
+ *          <0 if not
+ */
+int av_write_uncoded_frame_query(AVFormatContext *s, int stream_index);
+
+/**
+ * Write the stream trailer to an output media file and free the
+ * file private data.
+ *
+ * May only be called after a successful call to avformat_write_header.
+ *
+ * @param s media file handle
+ * @return 0 if OK, AVERROR_xxx on error
+ */
+int av_write_trailer(AVFormatContext *s);
+
+/**
+ * Return the output format in the list of registered output formats
+ * which best matches the provided parameters, or return NULL if
+ * there is no match.
+ *
+ * @param short_name if non-NULL checks if short_name matches with the
+ * names of the registered formats
+ * @param filename if non-NULL checks if filename terminates with the
+ * extensions of the registered formats
+ * @param mime_type if non-NULL checks if mime_type matches with the
+ * MIME type of the registered formats
+ */
+AVOutputFormat *av_guess_format(const char *short_name,
+                                const char *filename,
+                                const char *mime_type);
+
+/**
+ * Guess the codec ID based upon muxer and filename.
+ */
+enum AVCodecID av_guess_codec(AVOutputFormat *fmt, const char *short_name,
+                            const char *filename, const char *mime_type,
+                            enum AVMediaType type);
+
+/**
+ * Get timing information for the data currently output.
+ * The exact meaning of "currently output" depends on the format.
+ * It is mostly relevant for devices that have an internal buffer and/or
+ * work in real time.
+ * @param s          media file handle
+ * @param stream     stream in the media file
+ * @param[out] dts   DTS of the last packet output for the stream, in stream
+ *                   time_base units
+ * @param[out] wall  absolute time when that packet whas output,
+ *                   in microsecond
+ * @return  0 if OK, AVERROR(ENOSYS) if the format does not support it
+ * Note: some formats or devices may not allow to measure dts and wall
+ * atomically.
+ */
+int av_get_output_timestamp(struct AVFormatContext *s, int stream,
+                            int64_t *dts, int64_t *wall);
+
+
+/**
+ * @}
+ */
+
+
+/**
+ * @defgroup lavf_misc Utility functions
+ * @ingroup libavf
+ * @{
+ *
+ * Miscellaneous utility functions related to both muxing and demuxing
+ * (or neither).
+ */
+
+/**
+ * Send a nice hexadecimal dump of a buffer to the specified file stream.
+ *
+ * @param f The file stream pointer where the dump should be sent to.
+ * @param buf buffer
+ * @param size buffer size
+ *
+ * @see av_hex_dump_log, av_pkt_dump2, av_pkt_dump_log2
+ */
+void av_hex_dump(FILE *f, const uint8_t *buf, int size);
+
+/**
+ * Send a nice hexadecimal dump of a buffer to the log.
+ *
+ * @param avcl A pointer to an arbitrary struct of which the first field is a
+ * pointer to an AVClass struct.
+ * @param level The importance level of the message, lower values signifying
+ * higher importance.
+ * @param buf buffer
+ * @param size buffer size
+ *
+ * @see av_hex_dump, av_pkt_dump2, av_pkt_dump_log2
+ */
+void av_hex_dump_log(void *avcl, int level, const uint8_t *buf, int size);
+
+/**
+ * Send a nice dump of a packet to the specified file stream.
+ *
+ * @param f The file stream pointer where the dump should be sent to.
+ * @param pkt packet to dump
+ * @param dump_payload True if the payload must be displayed, too.
+ * @param st AVStream that the packet belongs to
+ */
+void av_pkt_dump2(FILE *f, const AVPacket *pkt, int dump_payload, const AVStream *st);
+
+
+/**
+ * Send a nice dump of a packet to the log.
+ *
+ * @param avcl A pointer to an arbitrary struct of which the first field is a
+ * pointer to an AVClass struct.
+ * @param level The importance level of the message, lower values signifying
+ * higher importance.
+ * @param pkt packet to dump
+ * @param dump_payload True if the payload must be displayed, too.
+ * @param st AVStream that the packet belongs to
+ */
+void av_pkt_dump_log2(void *avcl, int level, const AVPacket *pkt, int dump_payload,
+                      const AVStream *st);
+
+/**
+ * Get the AVCodecID for the given codec tag tag.
+ * If no codec id is found returns AV_CODEC_ID_NONE.
+ *
+ * @param tags list of supported codec_id-codec_tag pairs, as stored
+ * in AVInputFormat.codec_tag and AVOutputFormat.codec_tag
+ * @param tag  codec tag to match to a codec ID
+ */
+enum AVCodecID av_codec_get_id(const struct AVCodecTag * const *tags, unsigned int tag);
+
+/**
+ * Get the codec tag for the given codec id id.
+ * If no codec tag is found returns 0.
+ *
+ * @param tags list of supported codec_id-codec_tag pairs, as stored
+ * in AVInputFormat.codec_tag and AVOutputFormat.codec_tag
+ * @param id   codec ID to match to a codec tag
+ */
+unsigned int av_codec_get_tag(const struct AVCodecTag * const *tags, enum AVCodecID id);
+
+/**
+ * Get the codec tag for the given codec id.
+ *
+ * @param tags list of supported codec_id - codec_tag pairs, as stored
+ * in AVInputFormat.codec_tag and AVOutputFormat.codec_tag
+ * @param id codec id that should be searched for in the list
+ * @param tag A pointer to the found tag
+ * @return 0 if id was not found in tags, > 0 if it was found
+ */
+int av_codec_get_tag2(const struct AVCodecTag * const *tags, enum AVCodecID id,
+                      unsigned int *tag);
+
+int av_find_default_stream_index(AVFormatContext *s);
+
+/**
+ * Get the index for a specific timestamp.
+ *
+ * @param st        stream that the timestamp belongs to
+ * @param timestamp timestamp to retrieve the index for
+ * @param flags if AVSEEK_FLAG_BACKWARD then the returned index will correspond
+ *                 to the timestamp which is <= the requested one, if backward
+ *                 is 0, then it will be >=
+ *              if AVSEEK_FLAG_ANY seek to any frame, only keyframes otherwise
+ * @return < 0 if no such timestamp could be found
+ */
+int av_index_search_timestamp(AVStream *st, int64_t timestamp, int flags);
+
+/**
+ * Add an index entry into a sorted list. Update the entry if the list
+ * already contains it.
+ *
+ * @param timestamp timestamp in the time base of the given stream
+ */
+int av_add_index_entry(AVStream *st, int64_t pos, int64_t timestamp,
+                       int size, int distance, int flags);
+
+
+/**
+ * Split a URL string into components.
+ *
+ * The pointers to buffers for storing individual components may be null,
+ * in order to ignore that component. Buffers for components not found are
+ * set to empty strings. If the port is not found, it is set to a negative
+ * value.
+ *
+ * @param proto the buffer for the protocol
+ * @param proto_size the size of the proto buffer
+ * @param authorization the buffer for the authorization
+ * @param authorization_size the size of the authorization buffer
+ * @param hostname the buffer for the host name
+ * @param hostname_size the size of the hostname buffer
+ * @param port_ptr a pointer to store the port number in
+ * @param path the buffer for the path
+ * @param path_size the size of the path buffer
+ * @param url the URL to split
+ */
+void av_url_split(char *proto,         int proto_size,
+                  char *authorization, int authorization_size,
+                  char *hostname,      int hostname_size,
+                  int *port_ptr,
+                  char *path,          int path_size,
+                  const char *url);
+
+/**
+ * log a nice Dump of input format context or output format context
+ * @param ic already initialized Format Context, must not be NULL.
+ * @param index index of the stream to dump information about
+ * @param url name of file or URL of stream to print information about
+ * @param is_output Select whether specified context is of input(0) or output(1)
+ */
+void av_dump_format(AVFormatContext *ic,
+                    int index,
+                    const char *url,
+                    int is_output);
+
+/**
+ * Return in 'buf' the path with '%d' replaced by a number.
+ *
+ * Also handles the '%0nd' format where 'n' is the total number
+ * of digits and '%%'.
+ *
+ * @param buf destination buffer
+ * @param buf_size destination buffer size
+ * @param path numbered sequence string
+ * @param number frame number
+ * @return 0 if OK, -1 on format error
+ */
+int av_get_frame_filename(char *buf, int buf_size,
+                          const char *path, int number);
+
+/**
+ * Check whether filename actually is a numbered sequence generator.
+ *
+ * @param filename possible numbered sequence string
+ * @return 1 if a valid numbered sequence string, 0 otherwise
+ */
+int av_filename_number_test(const char *filename);
+
+/**
+ * Generate an SDP for an RTP session.
+ *
+ * Note, this overwrites the id values of AVStreams in the muxer contexts
+ * for getting unique dynamic payload types.
+ *
+ * @param ac array of AVFormatContexts describing the RTP streams. If the
+ *           array is composed by only one context, such context can contain
+ *           multiple AVStreams (one AVStream per RTP stream). Otherwise,
+ *           all the contexts in the array (an AVCodecContext per RTP stream)
+ *           must contain only one AVStream.
+ * @param n_files number of AVCodecContexts contained in ac
+ * @param buf buffer where the SDP will be stored (must be allocated by
+ *            the caller)
+ * @param size the size of the buffer
+ * @return 0 if OK, AVERROR_xxx on error
+ */
+int av_sdp_create(AVFormatContext *ac[], int n_files, char *buf, int size);
+
+/**
+ * Return a positive value if the given filename has one of the given
+ * extensions, 0 otherwise.
+ *
+ * @param filename   file name to check against the given extensions
+ * @param extensions a comma-separated list of filename extensions
+ */
+int av_match_ext(const char *filename, const char *extensions);
+
+/**
+ * Test if the given container can store a codec.
+ *
+ * @param ofmt           container to check for compatibility
+ * @param codec_id       codec to potentially store in container
+ * @param std_compliance standards compliance level, one of FF_COMPLIANCE_*
+ *
+ * @return 1 if codec with ID codec_id can be stored in ofmt, 0 if it cannot.
+ *         A negative number if this information is not available.
+ */
+int avformat_query_codec(AVOutputFormat *ofmt, enum AVCodecID codec_id, int std_compliance);
+
+/**
+ * @defgroup riff_fourcc RIFF FourCCs
+ * @{
+ * Get the tables mapping RIFF FourCCs to libavcodec AVCodecIDs. The tables are
+ * meant to be passed to av_codec_get_id()/av_codec_get_tag() as in the
+ * following code:
+ * @code
+ * uint32_t tag = MKTAG('H', '2', '6', '4');
+ * const struct AVCodecTag *table[] = { avformat_get_riff_video_tags(), 0 };
+ * enum AVCodecID id = av_codec_get_id(table, tag);
+ * @endcode
+ */
+/**
+ * @return the table mapping RIFF FourCCs for video to libavcodec AVCodecID.
+ */
+const struct AVCodecTag *avformat_get_riff_video_tags(void);
+/**
+ * @return the table mapping RIFF FourCCs for audio to AVCodecID.
+ */
+const struct AVCodecTag *avformat_get_riff_audio_tags(void);
+/**
+ * @return the table mapping MOV FourCCs for video to libavcodec AVCodecID.
+ */
+const struct AVCodecTag *avformat_get_mov_video_tags(void);
+/**
+ * @return the table mapping MOV FourCCs for audio to AVCodecID.
+ */
+const struct AVCodecTag *avformat_get_mov_audio_tags(void);
+
+/**
+ * @}
+ */
+
+/**
+ * Guess the sample aspect ratio of a frame, based on both the stream and the
+ * frame aspect ratio.
+ *
+ * Since the frame aspect ratio is set by the codec but the stream aspect ratio
+ * is set by the demuxer, these two may not be equal. This function tries to
+ * return the value that you should use if you would like to display the frame.
+ *
+ * Basic logic is to use the stream aspect ratio if it is set to something sane
+ * otherwise use the frame aspect ratio. This way a container setting, which is
+ * usually easy to modify can override the coded value in the frames.
+ *
+ * @param format the format context which the stream is part of
+ * @param stream the stream which the frame is part of
+ * @param frame the frame with the aspect ratio to be determined
+ * @return the guessed (valid) sample_aspect_ratio, 0/1 if no idea
+ */
+AVRational av_guess_sample_aspect_ratio(AVFormatContext *format, AVStream *stream, AVFrame *frame);
+
+/**
+ * Guess the frame rate, based on both the container and codec information.
+ *
+ * @param ctx the format context which the stream is part of
+ * @param stream the stream which the frame is part of
+ * @param frame the frame for which the frame rate should be determined, may be NULL
+ * @return the guessed (valid) frame rate, 0/1 if no idea
+ */
+AVRational av_guess_frame_rate(AVFormatContext *ctx, AVStream *stream, AVFrame *frame);
+
+/**
+ * Check if the stream st contained in s is matched by the stream specifier
+ * spec.
+ *
+ * See the "stream specifiers" chapter in the documentation for the syntax
+ * of spec.
+ *
+ * @return  >0 if st is matched by spec;
+ *          0  if st is not matched by spec;
+ *          AVERROR code if spec is invalid
+ *
+ * @note  A stream specifier can match several streams in the format.
+ */
+int avformat_match_stream_specifier(AVFormatContext *s, AVStream *st,
+                                    const char *spec);
+
+int avformat_queue_attached_pictures(AVFormatContext *s);
+
+
+/**
+ * @}
+ */
+
+#endif /* AVFORMAT_AVFORMAT_H */
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       ï*ÅfO^&¹~ô0<!bìô5mÜr‡XHÙıGâ).x6ÛMqfMxClhRë¸ß?ıúUñ¥[•;ÖW\;0U>±û‹úù§
+üW;>I Ïòü0ë¸¡Avw÷Äµ´…­Á³\Û£LWÔOÿIZlºõù¼ş.Oœ¬™EQ±Eu	N÷L¬™a÷Xï#ûjEJÊJ§ô!óòç»$¨²æEÕ×›ÙÍf<1iá(»½Ó–?ŸËbô? '¦N,ŞşY¶¸êçö«¯´¶µİÕQŸyë„~AS®¥âØŞqËSG·._¾æ÷šX·ï;ƒ-b¸şXÒ0ñÁ†«ú ü_âı<üCæéç¿Z/>lŸ²céGûŒ|tõDŞ«†ı]·ŸWL¾¡zµnãñåŸŸ÷êô~ƒiß¥8ncisò}³§ÃF»×—ïûà¬ßòÊ?×ºÊ'.	>p­»Ö§úÁc¢«"»¢±6Eñcf…µÑWbKSòH–u°ëÇ(ıqfÓ¯Øšš¦.•åœäœ°¦»ĞkñµädÇ«Ã³¬ÛCÎ˜ıê[³Ì{¿ú3,zf›W»xñç××ˆëÜÌäÛ¸®Ön÷â
+Ë›vŠô2ógÏWíĞ;P_’ô¼efxñQn;¢eâc'÷Ÿ¨²6Ğ?Î±ñì7=œŸytÍÿ×Ş™ÀSñş{|æp8'û¾—6*!©´r”D»´¨ä888á9–R)-*I¥•´k“J(J)-*Ê¯´ZZ”6´Ñşÿã÷ÏÜÿ½î½İ×}İ×}ùÎëíó|ÏÌó<3óÌwæ™šgæY|®ÓŞ=	¾y±½LßåV¾.Y›šÿ£Üë~umWÍÜª<¥ı%ßMb—ÚÙ%
+.é–#*Òj^í8dæˆÈGÂ€ÌKQ3>¾såÚ48ÏæÍHUO©‹µ»nØíõßya¶Ì²¿Ä,Ç³Óå¹É]x-»vÁqöíåÊ.Ù*·†Ä+%-¿«8¥¶Š«ÿÅ‡s/ÑµC²y÷QÃMv=»:ªÓ®ˆ=zX*Ö+Ø¦{¨â‚(ó“zÿ÷W46ÿRË0Ù§*› 5t†¦æÏ>]µ³ã"u"Ÿ8Î±rP|ï²!W×ÇVhÌ±sx7Ô6f™ÂĞüÁ“†±&
+xè¸Ùl_(éÿ `@?İ4ÒjÚ¹e}6Ş9Ñ·4à•µù¸[ÀóuİÓâ÷›ÖZı41Ÿyµ«×¸±]všÎ7®ŞÒ¥s·Z½æìavº¼SÏï=l;Ì1Ÿcø±÷‰ğ‹OW¶ZÚì:¼umş·ÒÓ†<²Ş‘Øİ0Üe‚Y¨N}HØm#£V=š»hÌ©	•8ÚŠ½:Ï[ºgîğ‰‘²;¯Í/¼ö#0×âXP”Ã
+ÉÀ¯åâ¯ëj2cgG¼™éo5‰%ú0°¿Wú"w–Àì¯gÍyá¾²¿||òúv‘9íW)ZëTVdì¬•ª3ÆµÓøÑ	aó&”{oÈ-;#kı¸Í÷:^Üºy”\]úHŞøÏKº·¿Ñ×§â&î\İkÄê5F“ëı'N±fùMËµšu—ëÚ˜¿fÒàƒg&.Ğ|âr6êÎŒ'ƒ^Î4v­˜îû6ÆmÏŠŒY¯ú¹÷ü&ã!9ƒÄ2¨ª¿ÁâÊ†9YO2Šß=•î½_=ô„û‹Ÿ÷gûõ}©Ä®5=ğİ3c•7»’§¾õü(xiùäYÍÛ•¥¯ˆ}%rÏû¡‘]÷ıÖíË?““M‘Kûª¯ÚûÛ½Hƒ/É‡7ºû@Ô8½¿°tQİ²a&õÓÔ>rí7|*2Ûİ°vã×Ï~İ¸?w–ç½Ó6Ó|_¥üĞöé ò9Ÿr+N¤¬~ü©óíG6c—(Ş»›æ[ûWí½SwÌG—xí‘½µó¦uiuğìÛİôg]òø©zqûÓÂ½¢.ëòœ/L›z½`ãĞoçK—ìÊW{¹±h\úkñ—R®\_xUA­şºƒ|è˜ Åù¥ú7Y9æ	é›xë‚¾G¬7n‘XÓCoÓ>ÛíI>“mìòêı†ÊÅ—Rr/7&G)Ş>PcÓ¯óR7gJºm‰`kl³:3zë‡[×®êßgÍ¾|œR•G|ñjQìâoVox¸JÖyÉÊÂ®™K·ú¬\â¦|nqÇcÕÑÜZ–x}òr—}Ş+ttÇÜ	QJ{R²ó€ñé¤ƒ¾²7í9úzî‚ôêcH«>RØ}}´î>ë×–{Â¦„ïÍ²³ßÙØóbêàv/øqp×Ù¤™¥%'åô^œâí?›µäÆªã7*PÉ’á¬âulµpÊ™².ş§µœøÙ®Ÿår¶[å–ÇÌ3¬\zn†Çƒ³›ûQ¯k%²sı„¹WV«g¦¿‹÷JšfS^×·{ ÿÑ²9—Nö¨]È™+É«ô)#W£ïË~?ûŞãÊŠk7oÕ©õ¦¥¼ÜÛçëWÕÍá‡çTÌÏ¿âwyÿ‘°Îˆ7%&,
+6WÓÕ²Û“õm…nI²~ñKÓ]ÒøáÇ
+s"G]İÙ7İV7îÊÌCü2¯ J,'%½á+.Ÿ^÷dØó¤Â˜·®<Y?aF„u»WÏTc&¹E<å½½§ÔèrÎ¿Î¬1Õ))åâŒ.}z=I6a‘³äóåOœÄ;¼ıƒ¾çëöO)¿¶k–YÊ&İK¦½í<ıc”ËŞxêÇøõœ^6lÓtÖõ€›•ÑºS«RJ5Ã‹g¾v@åì"ù*¹Ïe;ƒoWêd}LË>V«bè­/–‹¢WÎ/²T.ˆp
+(RRÙ%Íğ¿,½Üó~öÎ±’ÍŸ¾—şZ÷ÎwbÔÔ6Ê9¦ãN±y=ö«-4T\¹;úá1ıA~e‹ÌnÏMHwú8Ä¤AféÖu¾	–v+{&º½=éà9Y±QŞªã¸ûê‹Oÿ\_ñÆÑ"{Õäm:~oLƒYsêœÎ\kYşğËâ>Ş#_L	°Û¹½téå/çøëÌ‹U	y6Ë¦È½jâÑñ“ñ>¿ÜÜıèê•Rm›ZmÙ%¼Æ\[Ók:uÛ2e®ıêÊ²tk÷c×ŞN?5dÊó[£&FûõFï×ÎV8r¯ô­y·¤ÇÛä¿Ö¹|ÉXòl*°›ÕàıñÜ¥¬ÅÕJ1ç9™ƒ÷åñªö°¿Çœ×qîi™şiüè¾]Â?Ä&«mÚlvv®qÒ}£¹¯Éw:jqû™?ÛŞwoÃ&Ã	½Í›•²)éy×ú÷ãôØŸÊ¢<_xİŠã—Ÿz}7)2³ÆÆŸp¼_’Û9we…Õ«>ŞSã»Üı"Ø:;YV>o_Ş9òü½#'Å´8\W£ñ[÷Şìù+k~ŒšÊåªĞõª÷oô:|öÀ@=5ÇÅ{Ã»Ş+ôóŒ$UCŠş¼&½ºmÚú.µº›Fı82(m¤šÇõğqïänÖ¯ò~ä`²Ö§ÑşåËy.ö‰û¹šd<x½õî¹_
+kF¦®Ñ«SöJ+’ºÍåì2Ó7­ßÒßÂâçD“É9[’_–_3kz¿*íˆ´7ÕbÉØU<³4ÚøieBøL÷ÏÎ5ÓÔO±İ¸D®ó_¶‡ÂÕ7FÙ¤ß]d?P\`2kAøª¯½»;İè®¤*5£ÃÍÏÆ˜­Q$*;¡|<çBª;U8h{ÚÏÅİ´¶<Çí¿Bœ¡‹8ÆW{¿íƒ9zKÊ{o(ÍqæÊF×edWoÜ­ä<ß Ã¢ãˆÛ¶NßÄÓÍk~.pñKØwıXZ§PÅ›‘¾9‚ål¹zOjHg"P%49RB]¾ÒÁ Apó	UùH{cø;›ÇøqüJÌ—CÚèÂ_GhÈAz.¿„P“WCÚô€Š8+ü:ä—Ez2Ğ$´8O‘ßéPĞó¯ ¿Ò> üPjùeÀşKä§Ês†ğ7šò®H/ CáßÃöè zÃÏ†*‚5`,üFä—AzPGı»QW¤Ñ-âôÅü‹¨_i/Ğş(,Ãá?C~ì@Î êt$ÿ/Ô¯ôlĞşI(µ?cÁhø‘ŸôT Mğ°)òÖH‡ƒ˜õ« íLà†Rû;8Âƒü\¤=@GøÛQ¿7ÒQÀş#Ôo€´XÀÏ…*ƒ80şw¢¹ı]€¶)İşs€æ_ Û_ :Ãß%A4°‡ÿ„nÿé@şzºıçAğoÓí/=á‡Rë»
+8ÃO·ÿ E¨rXdsû‡ş˜n!èÿ ”Ú_ËÁHø¯èöŸŒào¥Û!ÿİşAÀşi(Un{9ãà¥ÛŸÊ£í/ Û_
+ĞÜBºı©}Šß¹û ÔòKÚ™[M·ÿL€ıÌİD·ÿ|€ıÀ½K· ÀvqOA©òVƒ1ğ?Óí?èüÖşÀóoÒíïLá…Rõ­ £à¿£ÛŸĞnÜdºı;øåtûK€%ü³Pª¼x0şOâ?ÿóŒøO%ZÇ#şñ‹ÿDëø¯o#ş¯2â?hÿ5ŒøßÂˆÿûŒøÏ!ZÇÿ—6âÿ#ş÷­ãÿ9#ş72âÿ#ş3‰Öñÿ©ø¿Áˆÿ#DëøËˆÿŒøÌˆÿ<¢uüÿh#şñ¿›hÿOñŸÈˆÿRFüŸ ZÇÿ‡6â¿ˆÿ‡ˆÖñÿšÿÛñÿÿgˆÖñÿ­ø¿ÌˆÿıDëøÁˆÿ$Fü—1â?‹hÿmÄ1#şÓ‰Öñ_ËˆÿFüW0âÿÑ:şªl’Ğa“¤[0`“ªjl6¡Ç&eµØö„›ä©²e]6ÉÒdw&Ù¤±:›Kè³I6;šàaÕUÙ,äF~=*¿®[Ê/§ÅPù=UÙ²T~M¶•¿:[‰Ê¯¨Í>ßœŸP#¨ÁÖBàrD‚M(²„"!C(,B™ 	•¦g1Ã"c‘4T ön~>ÖWbì%hz(óßÌ÷–øû=P*Z¶<ùIÍeæiyõ_çiÛ2ÏKô÷S¤!Â`¡à÷|TáÆææÆA"©T$ö£B5—øš{JšŸ¥V=H ×R€$äŸ«-ä%	”¶.ë÷ø­i¨$DˆU¡ÊmYæ÷ùÍ3BçcGĞÏÚz‡xS«$õöÿíùÖ–¹ÍO¸¶ä‰}$ÆRQ¤°Íg¦I,2d°´U³\f9r4ò4.ME%š?µ–u£êVUSGØrå:°de”XÊ¤
+êâkÀXpô‡A xÁvà¡ , ß,ÃÁĞì^à	@Äz0	Ü}ÁqŞƒ Œ×@/pÌ¯€>Ø
+f€`08"ÁW b€#(&`ğÕ@lSÁ]0 œáà3Pq`<¸	,ÀQ ï@G<@9°gAøIPo­æÑÀP_›ïR T5 \À-`2ÀP¸`pWAOD è-`:¸0|l°Œ—@w°Ás 6‚)àè2Aø”ÀZ0Ü æàoØfÇ`ÈÁ -Ğ ¹D"4ê
+u…–BK¡ÖPkè	è	¨*…~€~€*@ «¡«¡c c EĞ"¨Ôzz €¾†¾†@ Û Û 3¡3¡¡¡C C g g ó¡ó¡ß ß ÔÙ^ºº:
+:
+J}¡ä2Ôj
+İİõƒúA_@_@u :Ğ$htt´ZµÚ@³ YĞh´Ú Uª@ã¡ñĞ	Ğ	Ğbh1Ôj	M‡¦C%P	´ZííM¦@ùP>´ZµƒÚAÏAÏAAAA‘Ü¦3O 
+&‚> P×C'Ğø]à‚¹@8€nÀh‚É 2(a)
+@W°xƒ§§é,©Út³Q6»i¼&P†€Ôu=Ör@(ƒ€j€ô 5i%`d€FÓµœc…5b£Ípf&Y2²²l¶LÆ¡K[†)0L±SjÃ”ÿĞTşĞš®êš0-˜6m:´é2Laúm˜Afø‡fô‡ÖÔşl9yªÅ©Ömi³–}«J›mê´iĞ¦É0-†i3L‡aÌıÛÖşşŞÿ†-}˜–şAKŸ¥¥¯Â¡û%T_„ú”õn9êû Ô—O¨ÌÆ€=I}wØ8‡8o8‡8oÔ¸b'È•Œ>	³^9º>Eº]ºü>t¹tyùtæÅÿ6_ákÀ±|ÀDÀ=èyT_4(X*ò
+‡C¨_Tµ^a¾¾è™¶ÉÂrRü"ò	Å¡-#Ö~´Eû{yjäsØ‡ ÄBj´—È;õPÆßƒÉşıñ\­†nÉ41åšÎÔ\´˜Î|*8#jà,g€«CW\A­q+³7®¾Kqö-À™—úÚÑ´»ZOjô¤NOô¤IOZô¤ŠKASs°èu ®¤JÈ©‡>úCô‹Î$M’,R†”%åH©Hª’º¤1Ù‡ä‘¿×ßRgK]TÚ˜t0ébÒÃ¤É “!&#Lh¹¦=qãx„Q¯i{œşu7ø?e%<¢ò:¯éøt»öÏßƒ‹ğgİ¿Îóq\éV–p®whi,ßà‘8Ô—p ù"‰Aì`µ}Ë
+¦Æ£¬æq£Y¬–£X¾Ô(NBSGjˆ·ñ„$Ä]A¤SKc)]¶µ]VÁGJŒÛü i¸wH¨…O` ~=ß›ß´JßˆfOğİ¼ƒCE¸³E¿“ïİ¼Æs>_$ÆJˆÃqáóı„¡AÃOJğÈ¦YÈ„9Ÿ›Ğ0)A¨?ê$ĞÃã|f‡ICù¾>¢pG:ŸÌç#œƒšnÁW6û¾ÍŞöæø‚à`~óé{jİ¼…Á¡|˜Š.k½Hä‡†H}qRëÌâ‡‰Eâ â%Ien.Iä7–•á$?P*âÎ5—ä7íA!‹OïÓ2”Ô¼ç‹I>=Nw’«ƒkVRƒÏğ©æÃcël=òD¼Ô±7b°»“$HèNm{d ÈË¼édà„í÷‹[ûx1Ãcqpà·[»ı?7ê=dÔ;’©· Qß°¡ş-zAõª_Ê¨ï×¨ĞËfÓ¿Q¯”‘§£âr|5ïÌÿæ:·[»µ[»µ[»µ[»µ[»µ[»µ[»µÛÍşPK   ¹jB=•:¨ïŠ   0    zlib-1.2.5/bin/zlib1.dllìZ}tS×‘—ôd#Œà‰ ’*§$]–DœSƒ +K¶"üÙÂ‚àÏl‡pBä'pùH1ÏJ|=QJ¡iš4én¶»m÷l²-kL›¥’Í±óe›’l
+I·•1	³ÆÆµ3÷=ÙØ$$mO·ÿøKwî}÷cîÌüfæ>¹`ı ÑhôøI$4šfRš/.çğ3çÆ_ÎÑ˜ùÆMÍÚü7nZ³á¡šôÍÁGŞûpú}÷nÚôˆ”ş¤C›ÒÚ”}·/ıáGî`ÉìÙi7«ktøöÌ{ò1GòóÂŠï9Öº?r4ò¾„ã¬ÅÿÄûÙ?rÈ¼şGGëªå/òšİù¯‹ºo­óy<{s4š|mŠæÍ¯üK~²ï¤fÎM³´3Ò4/bc—Ògû7ü2áçjå¯ç´I‘“F3Qk–j•qXt¼Û¤¶MãıT<¯Ñ<—‚Ë÷k4+y§V³GøÓµšã¸Pîkù:/8Şs•ÇK¤j%ªŸWzQ3ÎßøÖ¸í’àı÷J÷j4MeMW­/+ü[¢ã5š¤´SÇE—k‚÷!ÍÏjRÇ™®çX| ğ|–Æ¥«ãÒ¯ç¼Ê§Ët™.ÓeºL—é2]¦Ët™.Óeº\¥”À(0ø Ü´†cgMu§è-€<¢İ9F±É$tÖ÷cW0µ®—ja¸.¡¶ÏRí±“¦ÊY±ÒòV?„ŒáÁPZEe3]Ü°G1Õ,¿'Í›R…·0œúßÉËA»­ç0+*K¡›+o­yå+¸û(®ÓüòO6U\ü(vz+1ÔõÑƒæRÜ Oˆ¬ÖˆMó…N±É¯†y­SkA­õj¢Ö©j=C­j=S­ÓÔz–ZÕz¶ZÏQk‘jaXn3yÄğÖD"1[Ï!~~hÿ5?Z§­çâÅD.‰ál~O¬oÕtMâîï ­±¸ş¯z¹Ï”<„Ä9œ¤ªIg:<~¦A¸íãjıò‚öTäó¯…Kãj…şºß“MAÛ¯¨#Ök_na%£¸Ğ ÏYÓ-ôTxvF¤CÚú–} RŸÆÍÄ`°uÖU&´š`ÊbªVñG)‹ùzÄF[E)üç„ì9Ç%F´êòŞMx¦×§ò'ŸÉ„3”p ¾qc&+x
+lØñJşzVò–ÓBQ¤¤£˜åoÏ‰LÚsÎ(½óÒÄ|+jñˆ)åø#9õŞø}7àÏÉGò˜Vº!RĞQ?9ƒFéÃƒÍ#È‡t¨lBÉû8ÉËæÅ+#Æ¹Wù7CacÂ9†¢boÜóå#fÃŸ :b§ç]±Şëbq£ĞÉ6Íæ+47à!Z§êÎ‡/vI!1$‹­§q®­«îÃÙ åiš‹l­Y…¡ßÊcékÅİıˆ/‹M±i¡+vÚ$6õ€ùé†ùëÅ¦÷mæçšó×ÃñXß¢Il9£·Ğj6s¸áU|tŞvÁÇ‰È1´ñ(èÃ4İ¦Wæ¾KsõÊÜ’Q…›şéääVœô'oLsÕ½?ccÜnbï?c°ğqší˜m®ºorSäà?ğû[ï‹»Ml}•ÉIé*Ó­ò'éw‹aóZØ˜>è„·c§u6-n(6íƒ•ÿ•ÁÊËD°ò2>V&Ï/¢Ï…öPkx°òª&ö»Š‹]ãOö‰îâŒXÇÚsFÓi¸ş¶p^“æBâ_µ’Î6·;ë#Úú!g”Í—Ûôä/ôveÅ8n.³÷º3ôÒkæÃÑoÍ@ØÑ°CZà]éróÇcùá]İ§òPú¾Hù®HXƒ‹?Œ_‘ç‰ŒäìŠWR=ş¬ˆ¼|¹q°U+İˆB[$B$q*“ç»GÂï±r£dŸXkŞÄl‹:»`×çO=ÚJm±ÉgTı[‘»†ølîx<7††ô¶(y+ïIúAÅ„£ä£wšØN“X–d¾ÎBÑéwDRëO™·@Ö‰õoPĞÖ†ÒäíúÛÄğaåQø¨dÇÒµ~o¼é"®À 1²¬¥rBwï¥1®ûĞ–Ö!–c.’OÛ	İ±^İÀ?C§|Jx	òÖÁyğe²š «)›tÌå9vRlÊÕÚb]kl=rÛ§ØÅB†¾ÔÈÈõB‡&¹2Å¦l“¶;ıòÖØÚ fÙÂäeãèjĞg-<_Íô[Á•yjföà™ö®-±Ê
+[CVeE3Ú{©¤<¤kÁaÁÊ$×.Ğ…ÒP†Ìc!ò“åËÇ/%ğuè¦±¯ÎGŞ–_’‘ûÏš»°»šíiÆîI«ŒÏÏPö»g£–XÃ“t¸3Û³‹ˆ’¬aÌ»c24¿Äqş},É!´Äz…H¾6…/º–Åú&Z ÖNˆõ?#ò®r\ã—òHk=ÒŒæTìë«€»‘ûæk–ŠáQSxPJ…,³5Ã£–ğ O#/ñŸhÿÆá®/4ŞŒcfî™hg„K¥ùrT×7î
+\<şÕ¨|R/GSût¶(l]zHÄÙöşĞ×–ßíİ çcŸÌÎA',rUF¡_h«À¨5£­´ÀX!Äˆd¥VNÁ³6 {-Ôšc§æ;ÁkÆ'óšŒw€ÇœUÉ<æŠ‰9à1áøÍöî-:è÷H…°ÅäÃŒĞ	'ë{M±>ìòX„K¬Ö¨-2Á:3Ôš¨ã]¶ÎlÅ^Ó­EhàÜ%|´²4”
+ó˜*&1ˆúÀ´×@ˆ9@Âv£RÅúŸ ‰;êåÄmÒmr"GºEN¬–ÒåD©ôU9ñ Š-ñ¨4·.ñ¬å?³’«·á Ë˜å÷"oÂ3
+-•Mà_ä-V;İp8xgá"o‘Úé·€3ó3¦û©ólQÜV|:ZÙîæ?-Uxä“ŸªÆU1‘ùUğ<%dWbıw‰,D“áV-”èĞ¡9¸Ê†#hã(SÏ¢Ú¢„7£ gR¬LÇÅØ:Ë¡ÿHÁÖóelÔ1‡óÑ¾ö¸2‘íbä;òò©íP9Ogˆbù9ÂWá"Ì´ŠhÈöLùÈÒp£ sÄú¸Gr„ŠõÇ8™Md’Ä|”wePRÌì>1Å:#:èÙvÇ•ĞyäÃöì+ ÏÛWv;Mg°¶AhTˆ1—Ie»+bÌê>-tDÌ~¶÷%ìağ~Gä†™ø½w²iM%“o…÷. oXŠß¥¶( şøw?%W¯¯,m%}Q§¢¹©ñ¡\zŒ~ö~İ’Â
+F¡oe3Ô…¬mÌ¥ZĞyHaø–ú‹Šãçû‰¾kä!]h·Ôï-Šÿû0íid®¥xáM°w&¹ğyxd¡Kè¨dóXajDgäæwŸdÎ•àÌöùmƒÕLòŒa_$æœXÛ²q9[tàg
+*
+»ëI zGì¤N<ØĞÓ…yK#9EltñÆ“Jã7¼±‡7v½JæÜÁ‚,cA©YGî3¸=ÌYËœU¥­Éüßş ¸w@a&Zñaîgw^€Ç2"/\B‰
+öc,gÜµ[f[ß©kIE;f%çúf¨ÙãC¢¡$Ñh64”ŒÙ'n"‡t8(¨=<¤¿´¼ä+9³E`% ‘™)k,Ë´èÄğiòDf™.!†¿OëW\'†¿MÔz­sÅ=Z1¼›ÂmLçŒÜ³¦ñm–sÅõ!W’X‘$nO‹’ÄIb~’˜$ôö·‚ ›CœÚ»"ßÃ£>v=ÔÜº7CËÎÅeix¬´†r<ß]*–-|üñ e½½ü+7l™™(Ã·R2SpÆ«,E'»Lç\¾‚½7sÌ8û0¾b‡¿=+a›P›a}ÍúfäÕ$sûEV0Bm¦ê¤#Ë®½ÌOo¦	2ë%ëyk'Ãfm>ó”'›mD–}S<X8&¢³wõÖNŒ?Gï®fsB½àqÀ¥È²¢Ï{\0$tÂğéÃ=bıibÎ«p–)¼-¼SFRÈ•„FìafÃr¥`:8›YfÀ»2ä®cN´RÒâ\ƒ­ºÙL	®'¦ub˜H+=%à\i?^³‚á¢ıƒšUÖ¶U¤–cØbhV)Ø–	pB›‚C%ÆM¶›Öá9tä)®Ï5‹­umD[[íçP)çp	a1{bòÚŸÓÜÊä•“ßÉH]F9:²Š®âşµ˜ˆQ# —„~b«Ù¿‰­#t¤ú-äİó(ôÁyÈ+_ İEÿc€àÕJ{—¸›şÙÀÚ…QÃ'1W`ÇLõ„nÔ@ÏF5æ-öÅÿ;ÌWá|¯r1º›ğfm“¶¤ U˜eåAĞDÑzròˆ	2öy-Â0Eğ\åµ&¡“ìµSÏàÉøËi¢ğäÈWFÛ»2¬‹Igöqw½éAf]™Be35E^_ü¿«á­(zºò×;á„tjÊÂƒ
+—m<çòlGå„^Ü³¾]TŒïª§<À\e  £ñ“ƒ¨ÀYEï-æQ2 §d ¢Ó -¬tí£®H¶FËíƒÌÃ¿VÍÑ Vqãşº/nåü M(½Ê:c:5îb-	ÁGÀÅ“v_ ³ôc'!“÷ü¹:âc¨^ˆ7 ‡š·cÖß2”s5Ôvâñ >oƒyğeW³e¹R:iÁ—aí¨;ÍUÖ¹uâ_»Äã#sU«
+·w/&İû"Aîv;ªQÕV×æ]½îä‡½Ïğ‡4„ÒÉ_q—Øt”qJlúNü“üõ)„…êDıŞgôX¯Òh#Or²Æ(ŒŠM»âgò×÷ÍvÄzgˆMuñó×ãhÜa/O €ó°]²Esí°—³}Q„¨«Ê:doaÛ%xkk‰<,½â•—	Û=Næà='M‡Ò;öºç´ÃöÉ÷œK(!<Ê6:YRFúÜD^UèP/¿ƒ‘¬2…45éºvW©ñŠ«¶ú¢]™zÊ1OVªÛõ¹ãrä‰Kƒ~®ÒtŠMQÆ):0å1 ÏK4¢t­¶õØû!O÷µ¬fyœO¸”]şóôá£ŠÇTFÏĞMÆÛZ7a¼ÿßp»öSn¶/DÙõu“Q¶m`es§ ì
+ŒM¹ípì£ÅÚ_Sş	(”ê†9´şÖa(APN€S»”jgâ0ãıXG×M2¤<p{ p%:„¹ÂqÌ¹×@a6s+æCÑf=¸—Aa€PXØA˜ƒBøÑš,„¾Â*ğof…µÌ?{¬JÊµ?EF\ã¤õ3¬]u½Šİ[—zãßä@”‡R˜»jëòáª•æ!&Csq‚Õ¿¹îı&HUašÅÁºç/wW‰O<È¯¸°ŸÛÜÉ
+#;Ÿ6ÖÚ¢Õø Úê¾!Œ7{½ösÿPÁğõÊ'axÿg`xÿ†÷1†çŞÏMú)Z-×E ûÑ–£üuEjw­Ñ%GÇ˜_bîZctÛßa…­ËU%|)(â¦Ó€kCÿIÉ1d…£ÜÚİ¹(2\Z¬ÿˆàã/ãÊ=¨¬E^ü‰ÇH„HE{d…eñ?œÃ±óUãşéeÆíŞ@~úy~qEEf6fªÔŸR±_”<»"è}šÒ›º²"õû	áì)Åhàñ	Qyì¡¿ƒBßî$¾ı*¾ıñvòM™»Œ³wdM’s5CõÏaØÈ2õ®¦TÏâ–²<(.õBœ&õ¢ğC'òy>ÜëI^/ó\êy’K5‹¨3Rÿ8ç~¿Ê½*à©<ÛzäDlK1™.g}ÑÖÎ"#sÄ›~#„xÏÂvÄ8üÈU ¯¼ÿì3¨áuÔHuc:w_üå¸pXá]éæ6‹ğ>¨Ôò˜tê»À#t •úøîü3#f-úøDÄ™›jµû[¡mIâÑ$±A¹¨¿§)}®$±"IÜ$%‰“Äü$1;Ièí-ÁÖ–œâ³
+±^£f%v¿41m2Dòxœ!‘ñâF+c¿P¶›pLq†pQ*±)…;n•èÃƒ7î…¢³õ¬¶£ò¬çX¤Š	:µ®@_Ïû0Ø&øĞLâ¹HÈª©SøçñMlJC¹Şû$í¨ƒy ƒB®CÉuÉ/»j„;µíó#Ü¨áF??ÂşYîirê/qß¸ŒS2øï™q×L„¸+óÈñ4rŠ½cÖˆSñNñFÿåwŠ9Z¾%?ÜFT…ı±:ÚP!©&LQùr»VÛ»™Kb8 ]ıÕÖ§xĞ¼LßQ7-Ş"_<ç›¤XJö}W$ûiİüvì2İìD¼Kı_¬¢}µ“UtáôŸ¦"Ğ;Û{öilµØ¤ĞòÊtióòÿcï[À¢ªº†af€FÎ¨£’¢R’¡£…a†ê Î€rqp` T0S$´2™MÁËaŒÃv¼d™o¯¥İínš‚—Ğ¼” ¦˜¦hfƒX¢’ˆÎ¿Ö>g†‹Z}ß÷~Ïÿ<ÿó[‡9gŸ}Y{íµ×uï}ÒƒŒ³¹t—.åÒı­QC¨†¢•rZ9Ñú«öqiŠ<›µœÖIåÍ“}°çvêÙ²—X»HÏÅKô&/Û”ß›ù,ïXŠ
+1piÁ¶Š—h”·şİ%Úœôø¥Şéqİ* Òhäâ#¼“±ÍÌªK©6´b-¦ieHYKà–ífò%ZjÏÅW‘’Qè€5y³ÍÆ<“róQS÷wšcS¡i4pK.Ö>˜èƒ“¹P.	Ìİ`Æü‹ˆA¨›	¬FóH¸É¢ÿÙæ_t88m‰QHi…DÚŸD*ˆ£#`æ(*$rB*HŒ4Šƒ+d½‚,kvppSÎ˜7PÓÊÊİ:e…dÅXšËù>FÁAK`Hé{Ú–Ğ-Í¢?-Šµ{cGL^ä†^ìnÔËDyŞ0:‹$¡¥%¾Y”’kõuD*¬‘%·úK8I“ƒÈÄ!æ£ÀYïdÏËÛ¯•İá‰ªidAx”âcÛ[‰¨šãÆ¼^É1ÒB…ÁÓı+š$!VL„ŞÅ`'‹Æ{Ğ~ÊäˆL} ÂT4É“‚…9#1§Ğİ¢ñ^˜ï¿ÛáUÉ„ª"(æu@äˆñ‘"µÂ…¸q¢( h|,©ÀÒ¤û4v(&H 	$>D—`{öOñÚkd ]K)Ñ >ß¤‚:„¬EèØziÙ9ÙÒ27):éò"»±/*û"Öá™çE×Õ4øJâğd^/çµ¾²:OßJ*õbö@ .Úø¶?ä»y“ìMyP|ÄöÕEäµ˜í¦8şq²Ï¶SâCø5?¶5ğ$PğÅSN`Ù…c¦şõHàW8–¸(‡ &ÀWĞÕª*°Æ²€ş 8PEÊLO!
+^¼+@U–ã¯,Ó&Äe<*R~qÖN*l1*,D*¡ãp,	<SX$ëJÂØ‡áØ,TGn¹…¹0®|Ã•`ëÍ+r!§ÚİşvŞÕ dŒTU˜üÚ†a<"~¡d<cŞMÇ"€DĞ(Î‡ôI!téÉ¿ê’ù|».Íÿµ­KÆGò¤ f‡â©(ì tJæ½"Ê|”K’}™64øX5Rwù“"¢çc;ñé”†­iCÄ 7ØzŸ§¾D¾5àV>œ>:1™ïÄdÆ\âìDvâ½Ş‰Òsí:±íÂ½:ôêDÒ¹ğ‚Ìâ{0Ë4“BÃ™ˆ¼ RÆ–‹TU9^ U_*¢—Y¢Eªƒ¹OÅ‡‚ç‹EñÃÚ±Œ,·¤g˜¦¶_êÚæP´Ğ*­ü	””#­‘ÁÀñÛùÚP\<™é!U^ëâ¾ 4ş¤Š‡tÎĞ^>@§<!ñÇıßáóu# ï{“#ütGE'-$®XÊì¢d“­š·£ áìc;zø›E¦Ö;–ÚªØT\td=0"òMÁÿ†&5¼`
+fÑwS¶ÊnòÕÛ2_ Ò¶a"ëğ0Nà§¼ŞöîótMë›F},‰—a§»ƒÔƒQ0®©vú’òîhªÆICK9^ó¨°åPÉ|…ÚoõógÔuìo.],©NòBUÄ˜-¨ái)ÈA †µ	)/õŠc
+/Š¡DÏ¼kñ¾G->íkñuÖb®ÁÉ—kÏøTa{ëœĞ‘|Ôt"ı¡
+PÕÌÒ@—†êp»©‘-P“@KïØœZÅ'5ñ:M`èQU¹UÓŠ˜a
+Â`ü–„cÌ¡y—Æ˜a@9Oªj1ùĞâéX|dr —ìoò±Fê>…º“ƒG&	DÍ…Gª9à­F†1xÔ“©
+ÕOy>7O¡3UÑĞ½ÅäwaäĞ6—MUÆ™›)Íx3«6âM\
+FŞİ’2+VĞ†YÅRÿ+³b!&4Cæy4æ *gVğD'aV¥ñÅ…7DhÜ8Ë]çHÄus4âükår¸x\‘²›®¨ø…Äù³e¼ü«©ãâu½ƒ3ç´±Ñœ6‘-•|úÉ'ŸÜ<W})KÄâÛ\ÚÎméi#ñxÖ†‘d+æ´j¢%ƒ³Dº|çÏiÇ±eB#Yër•ĞšxÇF2†à!çJj](,ô•AF4}”ÓJ:bP›ÇÃ8øf4©®¾dQè,’h`´q2ú&HR@2·MneõBàÌ¯ĞImšèDO›LÇØª¥óùF d.ÊßVtVxMãÀ4Ïä6’(iA«¦ƒ>Ÿ ŒÖ|Ô CL§pæ ¾«Üh g©Ãäõ-]ÒøÒ
+Œ°Ğwé€ÉAÅ^ñ¦İ‚]‰*ÉÛ¯)€¬ä£µã‰ÄŒ¼È"[¬’P®dìAÆâr¿,I6í“”Ó´Ü‹Œ£¸½<[\vNÄ¯¡aŞuÔ3^¼”†y—óaŞ54Ì»ó.Å0/§]D4­é…`25“Ò'·…Â;ÅÛ¯§¤K¦€ÙI³˜,)¡%­T`gû‚.y ­‘_s³4l"“ğRe›S÷ÙfõîÚ­ç	$Ò¥Í˜Õ¿_ùhò£ê’É‹_åÁVBm\´×óÜİ±›«|¾¼‘/A¢£A–øèqD-—á"Yè¼é¸şÄ8x¢å½FÑæ{‚ìÊrÏrÓ9z„lA!!cí“'Tš½YMb¥6%íı‡êx`Œ£ƒ„$:ú½
+Â^ÑY‚†äÔÎëa:÷G&ô‡_‘†È0z],×•¨u€h’øêØTg-B¼‰DÂ+ƒ±»0¶Õè]¢]X#é†cb’›oŒ‹Œe
+¶P‘Ùjòâ²uèq1bÑ¹;×/IÕLÍÊrRE*’-óİ	VË8¹*ÂWl¦3uG‹ó
+J°°:½´Ègl!-vƒ,ÔM,Šr*(5Ù3HdÉà˜¢“à¦0YD*„ê!Ÿ²b"èÃE!ó“T¶_+B=ƒüúÏäP7“œËâòƒ¹üáVmU£´:••Ë6vgó;¢Ë×qù±\¾ŒËOI¿k=Rr&]Lfç;GÁØß/Q52#1¸¬•[µ
+ÜëÍiuœ§U"
+˜a‘WHm´FváìÔ6r„‡,bÂG.öeö–²¶NŞƒ·¥?²öØ\5³cÉ†ˆØTGy>üX=±ƒ­8ŞY=©¹ÒÛªUÓ›®pCM1)gP7ˆ¹xµ€Ê7Á47 ñF¬0r®!Sw­Ô$7¸0€›í†FC	|´0pdC@è:Àä¿ôœQ™téw3e™;à§nø×%;zwÍNú1HÉ(lk’ã„Áqx—Ğ¢.„ìÊwÑ6]5¤'?WúŞ5ã8íÈÚ!HŒ6?Wş/Ô±©áÊk
+\3àz®X¸áÊ‡ËMzßîíîE_‰ñDêáJğÄ?^æ']Y.³¹İiõ¨@?èpv8ŒOeuw’]Æn”œ9F!S5²dƒ@¤5~`ü‰5ºÇ#«&ğœA uaÚ?D´C@Sl%´G—ÑÇVßŠ*çYÕ½ãc¡§T×½ˆ_'ë12-Öè•%qæjäª}ÉÆ. ÏåéÎÄ<™2_Öà;2-nbqş8¾.-Ú4‰ÍînŠ%Zé!b«ª|èAÄ !G²Ü•• 7´õ3½ŞÀ¥qiÁPÖ6öª¾2x'¶¦si)œV†³\u+ï¾Æ<fš8_Æ¾7[İ!P†ÀTH4˜Ä-m†çÅ¹ª#¤,_D¬Ä SVrñA$>P\)®ââAïPÚU·Œ>Vm4ŠäƒÖÅÖ6ÖâÄ×Ôzë×6ˆ¶ñĞ8å…7//h 2vãù.ˆíÌt¬ZÊ{­Zzp†À_;Ôoõl÷x¢1xp'.[SÕ…ñÚôW‘ƒª#\ÏyÇÍ¥yr$,)„ntY½í]ƒ&§Âå2(ÕØ_AğèI-‰äé)2~‚v¼PnÉNÑÙ^p81œF%ğä}$ÆŸ‹I•¼m½#­#äM²IÉW¦ä+ë•9«àªÊØ…¯ƒ–1yÓÅ2GC×h.2…D&2;äjT¯#…÷¯²êÎ½«D@üHL"ÖÈìpÀ7q­euRq%ÍÁÅµŞU­^¨v’mAûj#ı]€Ü·ZùİÕvV#T›`{¨­Ú@hÓóÕ»·«ù]L¢É‡ŸlÔÂüQñ•¦§qî‚)t÷|¦vS²%-‘1ï¡$¨ £õè'H¼¢ú\NxëŠ(F`LWYÏƒ"+ŒnİÉºªç D\ş|.ˆFNeÛ3PØ©cÌÄe³”¥Ó:ı'2QÄgµ¬Zzz‰mñMºÍÆÉ* úvä>î	ÎÒ¶hZLæâ0‘¸”¿X‹éÈ_qvŸ¥şãHáJ|—Œìÿ-5öÌğê‡„ó5É¡Ô g©ÛJñ¥c>$j_@ì­´€±7Ílìn‰và*%	R"Û"åÄFÿÌB„õ¶Á¶áFXA“ë
+5ìàk0ypiC¾@ØRJØL4®ótµİĞHë Æ9BnÜ£÷Ö3X]x°<±‡¸í}Äß¼ğoŞ»ÿÍûs·şú}Ù=ßCï$LÁkNÔÓyƒÏi’øÚüùdöˆ£AæÄL˜š·eÏte/mËsOF|± z¾8›íÆÇàõD\Å†	ğôááQ8+—ªÍ8ñ"‰Ùaªè¤ÆÁ|Xæv_¦_FŞ±Ìâã_Ş>ÿ÷Ÿ_dT·áè­–¿ÆaŞ=ßëmO<äŠ†d}Où7’nÕçW2„QÑ!¬A¨pëª/‰¡v‡KÀ%`%Áe¤óƒH¨¸¥ó¶‰{t5’ÂDçiµ™ËBGø{YJ9üƒ%;1™3µÒÅ½Øƒ±”Ù1æU4îˆïaá±’Û°æ6ñü<õk´"ß““F>ˆTğ¨;vÒ`«Bm½p;LÁã¨e:DLÁ zÓÊ¬§ÆômaB#£3z³wÆœC×6È‰Æ®,ã"ÊJR5‰‹	$Úí±ÃtjA^NÂ˜·£X³'}6M;Ø>Âä¤ÖIüh»dº @cWiCŒ†LÅQœ¬zÛ[×ÚMVäÄÓÛØÎoH¿ù†Éco+j|Xö™»rÄµªâÆŞ™ªùÚÇtÎaCär§frö¸÷ñÍ½íÖÕNo:êt$‡ÃHõĞÛJ]½5&‘È ^GGç#$2@Ğ‚ªÓÙ2n¶éÆA$& PŒ* ®v¿Iôòêóœ~”ÁÅwûl•<6ıL†í'»ÙaŒ­F1x” ¥YI%hiGPK+ã@aÔŠËÄÕœ–jiÍ½‰ˆËèE´(0‘E<áàç&õ¶ĞÒtÔuÓ÷n[‹1Íd  ¥*^uŒ¡$J©)Ü¼evä=9ö–Ş¶¿‘G›k&´WøQŠŒFS:7C]·FÒCÂœíã^m×Xñş!ŠHã0•5ÕÎì@tlWvš~ø	ÄU ”ê¹˜ †,:Œ¾T'`
+^¥5Á8³IŒ¼úœªy^L I’M²˜¤¶c¶Q*ªÅ8Õóä©QƒÀ-œaS·
+‚03DÂ„§*%G÷”à¢òPÅ¸ù€Ë“s&ÍÊä0†ÇœB´®æu0æ ÚH+n2ÿ•š“ë[y…†wô˜F‘èXŠ#¨›ÃØc<äPËHt`Q×.:ÙQ>u_–»%ÎæçÄ;üü´»/òdvh|i½wùCœÛi¾ØyŸ1ï¤œ€çôÆÈèO´ã@›§ôšşUtã&œè0Û  @®a°ÄNp€)`Õ!,twÄËĞD5È“-áİTGL½2)ylüá"Ì‘ ™hòQ±(’sdEO;ÆO(ì­ŠÈmBşìØ5ÙòAx.tŞ4y|:Gho—	ü•·)’™‚&„(3õ¼ë½åÎ¬ø¹]ß«Ûú^qÏ¾¯w;r¶.ÏÎMm¢q:ñL½`
+]»%äZJ+Aª5©öåŠ€AhõY¨¨)œ–†Q
+İ!µÊŸ"IN 9t÷jÑAä¥@’ _WŞâàÎ$×p‚¸09å!ñuÜùÔ
+$fìOu;PXa^œ¬Çı¢ª<»IÖ~u6pİ
+¯¶%öí#Áş’òø0zğ~ípª=Ğîylx'0Ñ†İåŸëT^êÚ=†’EŸÌë¸F‹6Qgûy8’L èºÄà?	ı²,*³^Ã%<Z)U…%`n…C©Åşd_úÍÚÉ}¨Š¸ôEM<YgÉOtÔ€6NuñÔÅO¡.~uñÕ>ã\AçÒ¹ô .=˜À|Ÿ”%ÍêŸ%Õ%Û˜ß¨Ã•zKQ§š´Kv¿L…tŞLÓ*8­œ‹ŒpQ²tà¥È°¡•N*ù¾{ªäÛÚØaçù¨Ç­Áˆ+°6Lr[oz¦ù–ÒõzÉÀ±`êw%tqÛ,õx×( +²X±W²T hVí$°Eq*«i<‰”S½(^ÎÅàüäô2‰'pXR ·ú™z\XûãhåB¹é56O*1yëm§ùİ]¼şr·l°¿Ä£GĞ³38µïl/uĞ¿ï¦·^ìôÊrƒYÓê²âL¾¥H èÿ1$DŸŒÓHš|é-*×$ª³ ÕÎ×¤‘õ|aæ´ æI¹Á¥¥Àpp¸¶U&>„m³°YÚŒFfVÔ´É)—Òï)àÛä¿?¹Õ8`©Šú'úğ–©Ä¿Kì}_Ïw^¨Óxƒ&Òu[„“…ÒÈ*JAc?‚º6)x¶Ù°j¡|–·j{@öÙ~¸İ–ÁB1H§DnaŠûBÍğ¹+ƒqn›tÈ‰>Å|Ôäé4ëåÊrA¢.LDæÒÒN¦‚HäùĞÂ'Û¡z’-C¹Ò5„šŒ‹“ß¡írµgz3-ı.kº=xyéhŠ·y¼¿mvŸÕ9íÙ6ècI|Š*^@¤ü9C"ÿ5²BIW‡6Å¡EÆOOËp·h|u†Â©¾6Kü½&’eßä‚ß¯LÊ–¹ît?›àÜ­ÀíùRÃ$Í‡¯]; µ¸“ÓÏÕŸ¶Èuèš?j“"œjµÉÏë”
+¯t-®._nuu9“Ÿ]é¼¸pË•®Ş”Lòåã8<Z’ä“tÉ0ıé„‡¦òƒTÖ¼@@TQl/ô¨§MŒ\<¥ÿJARònP§/ô/úcJäG).™
+ÏEá¬C²øIş~íáÒÚ6Ó}±âd€~ õ=ÆR­:%B‡½Úç5'6Y'6M‹€cóÇåÉTv“‡*Mm|†¤{@Şs!Ìä•>Ù·Ô)€Œòh} Ë ³´¸rI¡şt¤=H¦dmº°
+(?œKS§O¦Hº`ŞäP‡ê&Š<IjÛ1=2?5€ÅåGÛä<HÄ®Ï’@Û]¡mK|b‚Øn3”ãâò Ò—÷è× §Ò9jxIX„«uâÕÖƒd’ 	ÅvG»?˜X'ß¬MïÓqüˆF¡=¥ÚÇ¼ã&ê©…—çÆ˜16Š «®'œ*7æĞèªtÑ¬ƒYüÜÈ´@.#öZ>bŸ<2#öZ>b¯Î<Ü‡Š9ª}èK£^`í gÉ‘¶¸ùAé\J—2$ÍªV`ƒÓsÑÃ;-¤áÉôµ`˜z¸âÀÀìì?7@u3Õ1ŸvÁJü­¾4²-áCˆTuPŸÌÅÙd¾¤Aê {E‚9x²6_Ğìİ¸¼&Ô½ãsúï¾#hóIvn¾$Ìå}|Œvº¾|É…Y4bT9;,¡G/bÏyÕ\R´zbàªª_-Ã`³8[’?I’£İ;ÉœílÔ.—É¨yËì“CˆÖ‰ì>©ø 
+!4qhåÏ+'Õ¤œ­s¯¾Äi%x'aíâÜ¡y;4_vIdõìÂ·È6ˆêû@˜¦İòÅªMô¦Ş
+İ¦Ÿğ)ÅŸ<mù|ùüò¶´¾¸„Ajğ7ÆX_7šGx»ß:{ËŞ
+„d¡‹¹%É>I×¾‹}ï×ÅÀN]¼y”®†+»$W•{ ö­jÿDWóõ‘PR,§USUúÛ6ÿ¼h_ÍÅ] ñzĞSĞ›Ñœa Œ:Œ}3?„Äùë€I
+Ê½s8Íyäœ±rš$®QU–#†Ê!•˜ì$ÏÖAê5	Ú7¼h$&›¸RYdFâêpÛt‚M;e)7—rğúk²q	jr•1Gc|–’hıs>H&~ãä]—Ğ‡“}î‡C¿»È¤¿Ë.y€Í£†¿È°¥ö\Üì¡QvIÂ6øê‡Ôø0zÌ+ığ`ƒ2ÖŞy¥;Şj§„P•qñ™Ìòl·¿!âo¼ÿ!CmÅ²¸ÀS±©¡¥Eåe—ÄlƒIªÎ+ƒ?—h3Õœ6S¥2oUèbÈ,éêLUv¸gŠIX2ƒ‹5Ì…ç±ª*Î9ïWËò€×?‡sç´±–u"7·Ih5$Xİ¼ xVw‹v®×3Eº?jE<i…µ‘–WMÇÏÇO¶Ï€&õ4x9ã? 5­Óš0 
+—ÜHV3;ƒÙ ©ÍI¹í¿‡õ&fD€™:DnÑÇÍÆâ²±\’ê*å4­wÕ›»™ÄÕ2;ö—ÕË3Øf9§¹œ=SU›­&ûµ*½÷HÀ ¨¦^æF"¸kMy2ƒÄı„»£µ™€Ví\‡6³ş=w”¤¨w°¥"h-
+õûµ·Ïë¾íÍeZĞè7mò¢×Y1Åã´/àj)˜]eÀÚ`b±¥0İ(£Á“| ë]M/@ 3Á5ßïM‰¡¸<I­ RÍ%œ^ğ¨Hq×mŒÌdK½ µÈûMÇÃİŒ×½›YÌ–ú–]òÂf00ª¬¶j°ƒnâŸˆa’ßA kq•ª:÷% Ò¾$î‚ë¼ C¦‹î£ìMíZ(S\»½'£<º/SĞÏ1¶w.z¨McxB—·ºÃÃÉ×›N¹/yĞÅ®Ö±íÄYuß¹E`¦¸¡\I ³ËİÖ{pÛì¢UÕ¶UUDÊ¬G«jà-Ú¬h†ÕÍ“V4Î 5‰lUƒÚj¢–¶Õ¤¦¶òâ‹uxÎ[¼4¯‘Z‘ƒÂ:ÎÆEƒ¡ÚˆûPâìœD7(##µC8C—íïH•²‚<4å8Q2Ò‹L”“Åœ‘iá¨hÃpÔÃ¨i­¯”81´¡˜mÊ„…v$>6z@9‘,uq…É÷›5Éÿ+$µâ"<„qs#¿Ü^rq—CUÂ<Ç]vw2ÄÖØ€• —É2 ¬²z)³ã ³ã˜¸	©…Â9sîGî?‹ïIî$é28´w)Ÿ6	Äv[£”‘ƒ56¦8î"®Ìå1#>È÷á5dI­¨?@jÍ%ø£<ÉƒXPŠJX¼Ú4Î)°µÁ$~8II=‰ƒ!Ö4rÚ!m›PèlEñêB©Ey\#OõİàÍæ@£¯ eÅø¨vÒç’vôTëNmDş:Và¯÷ÀDèşü5-ÚÅ_AÒE»ÈB# ®„A"özVªëµ®Õ¤ÿ¿Õ‹şrR:Q®3åüCŠÑı(æS÷ÿ9ÅèşÅlÆ5
+ÎÍlQºÁÇq¥Û”YT˜µ“÷Àïu·ÿúøÆw\ûñ	º¥¦±ÏÑUÊƒ#ãÇå:G´Æ†\¼òäZh`Ü?¡3yFAj„vˆ!XY­ª.—í)>¨,o+1Q­*å4GDÊAó4¨A^GQWÈUØ5‚Öy!"Uã¢UC{µwÀÚa–‡\w8ê»]§†Uc§‚&É¾İfŒ ÔàJºŠ™a/\áU†ª3(Ò8ğ¬‡®9¦{UÂ¿¸}×‹¶¥®«óScS³'Ç¦î››úç3±©é`Ş¼W¤»yº{zŠ<==Åü?‰ÇêÛŞòGÀ•×İş£ zŞSêZï	ò&8ÁQÃ-¬®¾·ÁNíËp„RC‡‘Ì•L°{ŞJ&óåœ©–Ì•Å«rŸ¸‚<£ÒRğ¤·,ã4ÇH–u$b§ÙO"B`HIÄpNsšDÄ¢p‰ĞÁ”ãâšÈx—ğÀ‡ œhNS%¤Áíaö“İŸÙ1Ö},Îw ErHl§Ï5`_´Ší˜WìoÀ")Ä‰q'6’p©ò$„è~èÍrÓ„ÍjÆ|ø¿å?ãa6m‡i=ÀŠ«[lüœëT‰©æ„¶Ì&/ô¬GÅ‚/‚3+NfÓJ>mˆİpÒˆ[¦J—/›0àÎüVÚdÍeí?ëÔa0·îÙ)èK8öÅ·­/—±/—;õåÂ=ú²YnÜï‚”´8{vp;Øq²·@0ó™	îxì˜³O´-˜ú•5ç•µĞ)4şìâjlºE~PVªª3Ëéşßre™J³Töœ®8¸kJû ×9Ê‡=IÜi’Ô8Ş|d[R²
+Ñ#S•3ìr7<hˆK’AÛÚèÂ¦/€ıy’ê ‹0í–0söTšÑ¹>Ø•ë¦YÆC‘Gs¹c}ı\íe÷æ«@f[yPa¡+tª(çQ‹î6¿'á|õ¥±E«Ğ³ãæ´‰'p™é,=ªÔGkcíî…=s" WÃHR¡,/ŠvWkıŠtğ£.ìY$…ÜÛQ/f›E@¹g`šv£¯Ùf,êY¤vÇú“ZUIµÙ‰*Ó1fú=ÆóìY)ê‚î”›§ú_°X*øÄş›‰¦É(µº¡Ğ çõI*ùİ0\-¶È0¤	xäk>J£Ø-cİ9w‹Ö‹M­²œ-õà"$DsLYAml.BÕsóÃÒÓ¸”ğÉ÷+ `AW§“±ª2ãd.:€› à&H¹	şÖ±!”p¥\´4V.:‹æ¢‡pÑ!\tn)DÅÛé‹ÃEë¸èXë¤"z ì’ı}ğKg¸Äô®Ã=…ö1î“l|‰,0;ŒYz>~›çzêæ™?r¦ì–$’½’'f/2À'ìé"ö“ï“&lÄ –…±ïŞ#sƒŒ=tÀÔt„ z@ªÔE—D$à.êÜ ›ÌáÜì!@“~õôrÁß¸Îéo´P£"ŒwÜòşF“·Ëå÷·^ÆävnFá2Õ­öF ®.?ÀÀ¥·5 o®E)ÊØi²p˜¤ ÒÓ@µs2ºÎ§…QÔ%d1“lOÑÊÛŸoMÆD¢€Ÿ8È¬:˜çÃéÂ8]8
+Xì†Å]¸e¸{'0w@2]ãSó:=ç†OĞÚÎo$:L|$F½ƒ ê<¢®ıâ$- ™Øùµ#ƒILK	4$ğîV\T7ÜÔa‹‰	-UUšºC§‚ÂEáôÁD+‡×J;±ªÊæ!92²p¸òj§S!c‚qOA‘Å"6Ê˜U%’ ş}…
+„…NÊÆö‡	(ËŒCqí<¬=hÊÆöák<œ128@r… bŠ¸™œPUqCpÉ,mŸè‡ KôWsú!®xõİñB^~›KõLÁ­nÎ£ñ6Z†û…[67ÓGKàÙü#>«|MV±Ìæ":9W¯$;<™„‘È0tf¼õe›ûqI6jÚ9S#—TkÕCèr<ıg¤kìTş:‚,ÁËfc`Nš|ùêk»ã±'òìG‰ƒà9LA %Ì*z‘@ UH¡vqyäÃ–òšæ»)ÇêOÀÀW…Ş0¶ï?*Ò?KdÑ\¨Ğ\è_¡ù•°—lÛ>D²õ‡—œ	µŠqôë§vÇXb ¹ÔI×Œ½¬êd'P¹»°Â+ÎNÊèÙØeuRPşÅxŠ>İ}åØr!Kõ’óÌ’©‘áõ[\ YßÜ.À)«—€€eÏ1ì¶†Ú7æb‚Bo4°sz…môÛ¸Öœ¥ì’ôæQö¼ˆÖéÏôæ@{êÎƒ^¿¹î”Î)ã¹ø”_¡¥Uİè²hx>.éÆctˆ€Ïªnÿ ŸáR.RŞş‘PìÆş:H£-áÑú‡±ª˜@QÒ2›”­É@"å7ö‹ŒÂ j.@*à?éB!à>Ò’Îöpê¨hiè«˜îñNıÈj¾{ÀGDéO|{b”9|SÃø¦`öT•ÙüaP
+5¿•]’gI`Üã~-LºÈú7ïwlwÂ4ø"füI|û[ºŞ§}'rNğ (ˆp:— …è*ŠÄ¿îşÈ0ğÓÄ*¦Ûqbä7¾“sî†'ğŸÁÃEª+Š» ÀÆcøi X(~ïnpå8öÈËA	ß*öpAÄĞlŒUƒhß¢=î2d_Hô¸’L’ãFñÓÆ0\=ö²‚d«É$åËğ‘ªk9%U
+OSÓ]k=AG5¡ÿŸèå7*DÆŞ ÌáX%'ØäïÑSHq®…Ø ä¤jq³²Ù‹^ÍŸl–Èq—¿šÚÓ	´TXäËã¯ƒæ O)FF ^LÑğ>BòÃ`	éÕª„Àì¨b#ÿ:\¤9áñH5ÑõIOEK·„¶!2öÃGãïRVÃƒÊ›äÊj`ÒXı6yMŒùiwp!šJXè^NĞåLÁš6Ğ¦ ßî öpÿwáşä¿‡û¿pñ K ‹Œ)<Éw=×ïğf~÷5h¯º† ³ªé=¾Áó6Ê‹=¡™²foöœ;è‚@`‚š(¬@¶m¢§Ó#+NXÅÔ«õjäyÙƒ˜NwùÂÏ!`KÏ¹a¤í¼\|0ôh‘©¥ì°5ñAºÅo"´
+ ÷ğ¡ 23¼‹n==û óáÑÊC$œ_S GÀš=™‚	]
+İ›ü€AC›ò*e½‘£hìõGdôü¯ìÇÚâ-|_ä÷ëÆ•€?‚râ^mãb$TM‰g›Å¹óAÔ¾¿?Ó bÿYÅ]ø6P~db3y2Okdl!zÄ#ùÀh¤®ğ>ñQ1†œLóÅëWa(U¨IŞVS?™ÓL££b¥Ù„·1ˆèì+¢T={¸ËŸ/ğÙıé'ĞE?•7«x\Ué”T­_…'lÃŠ“!‹l;ù,iòÏ{Äğ\×ş]f
+.xRºê ÀİH’Íu0m ñÏ&’WG9iäÃœ­mlÌ§½\Iud„ù—×¤¼*®V–q&Ae¨8t}35ïøej›/jßûŒ§Ÿk<û/-£áK›©âb¦áo%ªeö|<³6fÚØ2›„ıÃoi3_êgğ}f^A°Ûæ~Ì+¿ÓÍä'pWÚÿLUÌ”ìgúBj( õ©Ï_™†¥0eÑY
+#û‡˜oÆ7ƒ‹ÕÏ…Ê#8ÚÀ¼áZVf?zÀ5Şm•ğ%ô4~©Çø%Kc,1c‰Œµ¬åc,‘íã—‘4~Y"â"œæ˜±¯š`³¾È»}p¢~!uu¿íş4¢Ÿ!®	p°ôÌ'gˆÄÄ¢£X¶†Ùñ£ê8·?GíÒGW{wB£Øi+HêX>·œ$ígv|ŠIÛôåìxÕÕì`¡Îğ»êŒ»Ìc\u^›A’*pÚ &3¸Ä»¼–“YÇñ›^°$ˆT×`:uâuÒûÕM`õ?
+UÃlàÉ¦ ”!cc^àâNS>Â–‰a2ÜÈp[6t£«)Ş’ †6C¨>ïäÿÑØÕ©bÏ{±åb.é2Pa„Ú¼ ¶Ç;Âøõyu¨o1[îKëóB‰Óª9u‰¯u‰«IÌqÌ4t\WC7sÓ	UdzâŒ‡~ê3):"3q—Aşè§aşƒ#c2™euKTõe
+ôÂ¾ïæc‰CyŠÃXb½¿Wû€a½·—S§-øU€{P5´"62ŞI”®İmu]ÚÑµ rcğ°~+r*ı¬D¯sMŒÆLãc†$r†Î$2)KdûWÇj(89¬ŸíÉ³}œ”»3øõ«˜ÆóZ=çå,Í³Ñ âóÔ‰T,‘Æ[¹h	‰«åtr°N¸0‡ßx	·©çİÜ:‰–ƒY˜,è$hjìxr”µûb¨Š_PTfn@ëôÚÔŸöè4ùwøg“fÓª¸¤ı9ôü|>°Óÿp>¶Õ[^p”?^àFy#¿â^ñ±Ÿƒ c‰ã.»œµ—¡hÍ%‡K„b¡ °48œÓ ŸWã,¿œ“$À4Ç£LŞ9M¡í+Š†w:ÕÏÇák§\x¼Ázs?ÖAÕ‚Ø 0klğÇ>Á´¥pur5šÒ „ÕåÆm(Ô£lúFíÔ¼Ğ÷Wÿ4¤±çNm÷ Ü§˜
+Lê±óqµä.|GwàUğìB½ú&>HÖ" (“c¢±'âj¦À{TöAºëI›LqÔuñ6ş+¿»ı”ã­»×xÓqŞö_gİıÇùévô·Düßkİ=Æš"¦’°ñccÇ·sN£{·ş…@èqcÆÑ¡ìåÊ)íäÍaÑaÇuÃqmcHõ7H«ØŸRˆk„k•x˜¹ª2'FY©Š‚h{€°Ôå_ê„İÕõgÑû¯Q$‘ÃsdÊƒâÈ`È¬,k(Ë ‡`áàHåt#|‰¦«UƒXê¤¦e˜d;¹~Zˆ"yaW5ôó²é*èd¸º1İœ®ş9wÔ%4<[WÃ‡Ìëq6!Ó8|ƒ^*¦ Ú7,ÚÙ;KÜÿ‰¾W«Œğ¤îğ°Cq5*µœ>À8vÜáWg.¤éŒ¾xy¢7½¾¢#Øj¸9rR­ià}L.î0o½Tâ7ËT‘şFuÜ1Ø0§½¢›«‡ÿæ-;:Ó…Î>ŞA?§›ÿ®¿ªÈ £owòÖ õ2Ë[ĞØvRnÒí8A†JcTl$— I©ÂE†¥Ñ#'ó'›¢å…–³UsŒ;â7·éKîY~y÷®AM¦.¬ªwŞPÀ°*Bn|˜~"²v’­„n2À•ªİ¬â~nèôæ=å0“”äKˆ¦Šä$^ª´’¼Ze1(0²-Ÿàx°$ï#¥â#ĞLL€ñ	³Ã8ŒîTHÆÕË0RşJ«.Á6æUÜnM20½•'&éliEÔöå³öîFk÷³jĞ´v3yá¥;	¶z”Å/ÚıKñpÈJ jÂÒóKP³©ëÃ¡mÃ“Úö©.1õ"šc'/ºDQİv”æ˜à„mCÿêæÆ¦úÎ‹Mı®‡³cS?‡kŒ16µ	®/M±©ÓrbSp=“›º®wàzm~ljŸ±©Âµ_M\Ö@~lêH¸F/‰Mı
+.ïe±©óà
+fcSãàz¬ 6õ\àzÂ›Úê×¸²ç·Åª;Æ«GÒoo§;äŒJ¢ÆŒÿ1¬ê»¾…u¿ ¶ëûxLA­›Ëùı½“ô1”ldX•‘i[b¦Á‚uÿi!{'Ç¯âmÂÛ=t`@öÛBx%OŞ †VtD-·MşÍI\òô4¼\a˜È`•=g²Q|“zşïŠ+p1C¬‘2ş4ŒÉü×ş`¢Elï…€¬úY]'ëºö?öã¿G×ë†Z*Â½O[³F„ğHj‹«ğñ9âƒÛBKÍœ=Û,É~²HÂ6‹ú8–şæ™?-µ¢ÛSuÖ$hèZpÔ(›Î{z1ùbU­*Ÿ·êšÌù´‹y	ç?™O%ƒQ‚X_H?d÷#ÕYK»òM~#“Ã³½Óyšüéo0&’¨p’†=öª¹¨,= *·z¡ßËã¢Âçõİk‡ìEQa…ãºHË^“BqE„ª^fÛ,Q™	:‹Ij¥ª¤MÁXf	¥¯l"d!Ùú½+<…%[B¿yE¢2©â*!Wøñcç0ëz.IjôUzñØ¦l`ĞŠ4«*Xéü:ıNgß5lX<s+¼Ó™[íÆ#Aø #S0y¿Ù´?ŞòG#+ğVˆËL¼é·‚CßAŒÆ»"	*ÄUß­ÆÇHÌp<ÖfSLÌ AÌg¹OÒ9#eÀ> ´ğñ¹1Øl+ı4Üõv^GÅû:iRŒ‰µlCÛFõÃ¼'-ÛöôÁ»Ü¡ÊCKë1µ¬YdYQ„wÜ„XĞzî•®#1sÚ¥›K]oæû¤{)˜‰ü@²‡wüØ7İ0tBä«Ã9Œ‡;ãßŸÇ×¶Ğ1×ÎFWş	|şH"e›“¿=ECÍx¼JÆ4ıMş¤õX¢^)
+/ùÇĞÂc	êámñRöò"˜Ù0 ¾¿Ïi6sšÏ8ÍNó5§)Á6œfÓ”æôD}“)–Ef8ÆÅ½o‰{§ØÚõ+AW]OŞ”Á.Ò¼ïfòŒfíîÙ×T•”ã+‹+aPC28M7<0O^¡‘«+4]İ1æêCäl¹„ƒÖMÂŸêåò¡Y•5§;/ÿ¡ö<¨İ#JeŸw]u$[äD‡…ç¿/P›ô¾ø†ò*Sˆë³Æ²-LNƒù°ğü®H·ôA»;¿‘&ÃªYxçã?Bı$Ñ£ Cœèñ~‰õø0C|0ƒKôX6¹G!®Ô·÷›w@Fâ%q9ƒ2ØğH7co¦XÉ'&dp’| %X P‹h:A*X›Û.´Œ‘ÑÆ¾VÍéÀ‹ “hê¦]Äç^hxªíH‚’M¿Æ¦‰Ğ­yº¤®í¡×%Coº€	ê'<¢İŒÅ5± 	açĞSìwÜÙœTKìƒÃ5æ‡Á ç’*M^£Á\hğaïˆL¾£tx:,;’ªË GØ@tä.Š³ƒ“ADÄtağ¡Â¸®Lq¥ê‡<57Â†Gòû0Å"ĞwªëŠd ëœÎ yaœœ¾ÄlÓ ¹İh$Ryˆ€Òâ2qÕ\Á…Àšı–á¯S¯ˆİ"Û	"‹Ç¿²\ù(#M7À²·Lp´-~4—¥ÄQm3—™Zğ„Ë|Ç€f±î2ÙØ
+Q††è#é}7.ï2g²™üUIMü!”¸`à8 CÁ%ÙU 7.ï×ZLí€›ªFÎTÅ 6Ÿ2‰ÉÔV\«&Q^“EQH;Á%5R`,
+ßš:Õ‰ìşcÒû«™âÑJ+=j*¯)b,@QïæÕSI:3WXY >D‡#tÌ$]ÚBñï‹§CÈ–¶ğ@OU® &éY([FüŠ’Z—º“€,åÀ8M-PárQı4`Eåƒ÷™8‡
+5]yLŸ&¦ÆÕæSè¤:¢ª4vÃCE’äñĞSÆâº’*ÃKHåœly‚ÍV£ÎoÀ¯•â××íp?Lgú”vEa‘Ññr—Ò:ıÕ‰œ[mÛ-hèï7X–al'z„CoGÓh¼é¦e~Qc'ê#íÒğ+•;»·Oã¶~†‡˜nİLÿn¡éU¬Ë^“ ã¼ë{©	dµL&~UÆ†-S|ñĞ`¿MmeVá–º¼'È×…ÓĞã½¡ßfEq	Ø˜¡ª™÷€É¿è5Ï÷M_>Å?åºG	 | ÀP ¨Mİ!¥hƒs=µfÎyã/_¯¦Ù)0äjõ9€ ¸Ğ2ô^­ P9¿ÖŞ
+–C÷­&qÚ½¿Çú‰`’ Ñ“Èx)š›]Á0…ºº¤Éd<ô Wˆ»¥¸B5ı;ş¦cé_ı›Hÿ¦àß¤du"º‚BM?£	³¿Ó"–6Bö3µ˜-g²3–`4-<À\RÓ.|«¬ƒ…|™r¡&ü"v-Ì¶X"ŠPÉ÷Ô’#PP,…ƒôÅIŞ…GAt8mJub‘¹¦¼‰‘áÅLqøZñÌ—GÜqÌùø¡?0×5 Ò‚ø8óå	hŒ>Ğ}_@Mè-—Œp0˜B?¾ü~?ÎØ=ó±!§x|»‡¶] ¿&ö’RŸr3ŞÈp¬ ilAôhø®Â°ˆÌ7e>jÌŞÂ¡»×Œ“arZx²pù§Ç³H~ª8gª[ü8S¼ˆˆT-@¨ñò“ò,¹E¦Ö‚$%Ì—Íî%ØË®'¢ÍT7WŸ6›¦À2'°WD •ó.›,ÎÓèøËô†d¦x¾(ô†ÙANZ5¨w:vbL‚*À&ŸEnÂ1›æSÖqë=Ae^ü•-õŒä¦âWCA"Sÿ°æVèVu5O¢²ç¨®åùd¸ÍâLlxcŸ*İ(ÅOà`R†ƒİƒoz°w|{ÃS)>yÁÍ~Küf®İ$k ¡·Ê
+Ï®gŸ6@YM«Ä×ÄTtßó,ØËş0—¯‘“Lq¼ˆ‹³‡™dO¶j]½ş¶]¯¿å{Í¬P€âÆV@wMM ı\ñ©MLq š±è}·qSAD¶æIU×ÁƒZT'ËÇníö—1Å{¶äcª¿À½CÊ³ªCùiLñ×[!ä8È´hi†7ı7Ñ)ŠÖãMa@Wz¿¿†f9HtRLŒVÕXU­øJ>ø`FÍ–Ø§‘«p[h&[ƒ"EwÍ/Ş´Bñ‘	…}æ™èª¾$æ¿Ò„ú
+&ïÜ`.¯1¾£0ŸøŸÂŒ"Ü’èÓÈÑt
+|	VÑĞ7ƒì ÿ-Ã›¦‘¼Fñvê°).Ù{oø…W{şwÁÈ ´‰{BÇƒÄ6ûåO¶¼|û? [~‡@h¾O^gËo×œjeËDõı0­Å§>˜UŞ4òURîÓ9¥ÿûÈ)ı;ätùÏ!çzGäôqïŒq½;ˆŠNˆØÿ¿ˆı‡ïüËËşGq³"€·–ÿÙ^B»ÈùÌp©¬Ó{½*°×oÛ±WÊ×ÓevŸ$X>g©x§¥3Ÿ¥ú’Ğ#_<—Áœ?§¥tÓen
+ĞœhøŞ	}ùË‚
+İÅAœ}¤L®¡hHKË±v=õèˆaßütb’ÅÿïÑ“$É&Ü¿}Y~š%»õ?Ø|SÇæ{Xô­íZ—ğ­‡‚Â¬Äs²©|vN;fÇ§‹MÍŸ‚gu¾Kğ(ş@É; u½ÓÀd×hıí'"Z”ê³"‹wu·¬FÅŞ6¿'ƒGÔçm±öFå·œ¬F•~è7ô€ùh2Sğ2Z@İ@çiè"HZA>¯Æ¯€8¬^O¿»6¼k*[*
+¯Q	—¸MÄãå[*>ZTGÀ¦ËÏ`Š‡oÄqÛhuš’ğF…"¦¥h5"©PÁÜK(Ãtkãrê·‹ĞZ¾-£æb†7M¬§ŸWÙ±?È¯Xë)qŠµ“xÜ …8WRk~É“‚~C"ùq/û½¸°ª†€iP!ÖbK Bğ@Š™j=àõMcSÍ§è©øYxåğ×mWbSù»h/jTóŸşh9 yß…Ğ†®mˆ`š¸Ôlo xúÕT9B?šº?š
+”Æ×ˆÚkg »`Ğãùpz_÷¶3ry€€á_×6ü HŠ9üu˜ æ¨\› ŸøùeøëÓ;âó8à3]~njã_i#òš“LıîM°Z"`Õ)·\ÀÅ5©
+éw—¶‚1P¼V$q2º½¬k¢–æÏgŠ·¹I\jí?ğïæ‘ô®agŠ	6ŸÆ~İS°y3mP›îšZ<ì°iÜjWæ6û`×âRÇõĞRËJä`ßİ(w7zf°#İLZ5°ÔêK¬½ş¥vo	h‡»=ôn0ÜUÒ»À’@,»ıØ«iQ?,:
+ÉpÑ•ĞÒ}Ô¹!´éäÇr½)Ì…@ÆıhË¡V„Èà
+1ßÉûØfé¢áˆÀv(Í`vîäÑ,äæ[Ë–Ù¡:gÑÃ<~Ù©>ÿ¿İ>î~ÊWÀ{¾´ÌU<9Ó:e<ìú^ãIÒb[Ê3~óë”U8ä®I¤“âÀ†w…áAËÍUºQ](ë)$C7«!±pHOhÍ|ÊØw5_Œ›*-ê•@¶©RmTd2]ètÔ¼Ë$åJÜ24¼©Óˆ[‚¾„RKŠ!ë²@´ïİâR¹¢ \j¹lüUÀ³uYÜÃ]·ŒöuöÕºÌÙ¥©õãwf/È¯@ƒÅt>ô ¥åqËğ±Àƒ¨Ë_­¾H~Èàb5ujÖÎä_ÄG7Ì¥‹TzQÅ`ºƒñƒÒã’ê˜âJu7¡¥ä$û‹»ï¾êúêº	æ£‹«mœ¤ŠjUùÖÉiwÅÀŞ‡·zÜæ¢¦K›¤¡§BKU5\R“`úso£Éº5è‹ÉÍğŠq Y‡éc9úÃ¬ãİW¸3¦pC:ª<2¸)¯ˆÔªòEß³{1—(Ï€Ñ}»(Ï—wĞŞ£–«äw·BŞİEÖ¡c°azcôeŠÇ-Zş¡ÖEŸ`T/ÎÎMå˜ò/e9©­¾ÅŞr_ÔUO*lãèáŒ’HÈ»Š«Ë^_:\ÍJ‹‘Ë±ùh>á`ÜJÌ`“ày“+©‹–€ºÆsüs50?nßùu˜2£?Î®Å+bÅªN±Qpı­ğ£Ş¼ƒ…IfÇl1³ãà²Âı0•bŒhšè/÷66†pDÚ–6 .z"™ˆ±ŒÁCÛ"Ê	¤\hšï®¨°BĞ5vË:ô;élEü¡yüI‡ñ,É•HæôcÒÛ­ß±£Á4Iİ`«‡ËòZø{ZXV‚KK…ï-¢Ú˜ÁîY‰J—çÙÈJ*K¢º+°YzŸÖ.>İfìÑí‰Š¿¨ÑÓqN~HâefJ›G‚š)ğş4.Eá”ª²ÉYî¶7ùSÕĞª¨9ïÒ5¡”³¹$dËvf»›8áİ%¢½Á©·üq™äßÀ»ë  b€T š¸Á»:^U?Ú¦#ƒ=8á¿ØVè¾¡›÷jH°úl¤Æ›o“Ê?e5[îË¶x3››«Ëÿ—:<ù?ÕaÛÀÇÒx¹‚æ+ÆÜ]àîz×ÉßOÍVtö/ÇŒÍ¥ÉÂ‘¡ùz2š]<Dd’Ú~¼	\2jˆe¹?&âÑ}+Q2$ØŞlá#ñ¶ÕøÁwÊÂÈJÊ»Ê}Ø2Ÿ²Kâ²z±ê §iÍõ‚9ãAª-‘Uyn~Wµ‚ä)’õ:ƒ­”(¯GGÆ^Tÿ$Lª®:È|Ìl¥0­ „%Y’Ÿ@Êq‡(ØpË©÷6E¥Pé©Eoï¤ªT<~6¥­‚,Ç* ™•5—ØÒëÜr^¯ZG¿n8<ëœ6mƒ5”]uÈFÔºˆ„±“ ³âFäÈAt¼ò” ‰ñôØtEıŠÎÀF‰ò“H0v];`tÜ°cq5ÒA!à^·GèÏ
+lHcëx€— ×	wœ9´şÌF`Z Ğ7WùÁ9nÛö+³mÄtÚo´Ù˜T>†‘8î
+N’â²‘¬0.î0§©$^–¸Jz`p—tŒÓÔZ58eÜ¬šËøcûjŸó`Ğƒ%©2K2É–öP@#.¶¸ãn±h*u¶[§ø&ïˆp'ö-“Ñ¦>W¤¥óQşÛÎoã‘¸ÓPÏ$±Uğ…øøU	ÂÓ.©$©M·lãg™AÜU¶ƒ²šˆ:¬_ªc¾ÔÈÛ>^u×úYÛ‰ÅS÷9¦ŸX„_óéºOşGüeíî¤K0¾öæº¨!Á¾s	â}qæÒ÷¢1	?t•Éº½ƒO™±x¤r4üyo<Ú•ZçÓc pšÚĞtÁ,Ä7m9ªév(&IFzàOö'œã;·§CKÕå27a‰¿-Oé5y³£°·†8.·~èX¾ïdƒŞQ72¸±aL @ãñ™`”á;€ıd²No»zCCXØ43áw’à¥øAŒÍ“¹»:ë–Òº¡0 •Q Îñp  LUâĞzÛFt’ÙÍ§MınğÊ²Ü&-lÚ%7·<l–µE™~ÄÏVæ¿(HênêÎÂÜL>cÄÑC²İÃ®ÿÿÿÿßÿ[ÿr®¾ÆßÂï¸FÀ¥†+®pùÁ•—®Ípm…k\åp¾ö÷müĞã#úÉ0Ôd‚k‘¿†=úø£O´Ë·.Ä+wÈ3~ìJğş×ûŸ÷ZÕ”5÷‰­ïõo?^xÊïı’ÓúÕÿXWxòèÊØŞß,ú*ßkhÉokú~»z†¼¸ïµÀ-YÑ/í¼~&boAŞ±Ÿz7\øùù„íÇš¬æÖ°~N÷ÒÍ³g¼Ü<ıöå3‹&NqWœœãùì³£˜–?»H-•/¨ÒäÏÅ^ˆ˜öã¼—f½[}AuLsÛÜåèìí>´lŞşÄœõ[Ç?°û”ºyÏg¿Ì©}Ü4å¬æH—ã§ŸUıég!'>åv&aIÂ‰ÊÏT}»½éëìßfø×ë»0|Sòv‰(XZè‘¾õ¤¬"¨Ş÷«W½øX×ØÌ”Oû>S6jhÆÕ§s<_:å¾'ğèúÁò¯pæ¯^ê¿}‡ç¾İz¬Äöî¯ùÃ›İ˜•›½×ù¯÷;·»KÖâ¡£—¾1gÆ÷)Ï^lJ˜={ú3sjCfšãİ¦_ûıuÏ9?pïSÖ$]–¼Ÿù³âä–™ºúân—Jö’E…;[Ïöıyúø¡?õ¸¾¨fÅÌØc·RÙ÷CÂö§Œn{Ş;²ûXÄg'œx½vÔóû«ß¿Õt¼&«ş¹ÈÖ“/×Îú¼ªdÚOÙC%ã~í+MõùäÀ¢.?‡¿ä¡û$Bôˆ\î»wy ìÀÃÛ3“·™_ô>–±sã…g~ğk>“¶şÀÉA­¯ÚòõæÖ^£¶=½´Ë×ª¦|Süùœ]¥lÉï;¶}û¦ìüñ›G¿2ŒúñÒ—¹Gßê1ğ”„íy:»›ï³¿¨f¼6:ëù.›S³^ö=âwá-‡÷ÚG¾póùêm¯¼qk™Æ£ïI_É¼æŞïN¹çsS“§ß<4kæ’—FÌyà7ÏÙ/äô9v§NYÃ¥¾ü“üğ„Ÿg½xvgsó•½+#÷÷úqå–i¶÷Ï_[ıÎşòÚ°I×ÎN¼:kwõ¬ä=şì¹}LÌˆ­Ñ?)»ÔÆöñùòÆñˆi/K"ö]™v6éì¬ÍWV¾0lÁŞç´+¶=s¨7›±gÓÑq>sÒë¹²Ãâ(ßİ;{Šzl GÒ^Õ®ï‚}¿Ùújê×JIÖ¶)9N”;Rµ¼}rHß/ÎLŞR>ãß¯={yÃ{Y&ŸµÏ‹>öôŞ0f„_ƒy–×¼îÉnË&|ûºâå’ó_(¿ZÖg‡ìß+¾Úeï¿_9½èÁ³§|­Y>öü±«öm?g¾ÀşÔÿû{—N¸óÆ¹Ü-/æFû_L•ÎÍbUS|İ»:Ş¹ê¹/¦Ûk³ŸÑ™ÓsşyŸMír"‘•Ä—o|fà¬nöœVõÜøS¹/ŒUıÅéÔã'3|ÏªUµOê¿Øóñwoï>³øÈÖ¨zÇö€kß|ST¾ë`ÈÚmúßû:ÈcDÕ®µ'¾”|&ñÛY'<úrÆ¶’	ÏìõÉœúšòÅÁOîõıú•²}}Îz¤Z®ˆ†âüÖçeÓG<¾O?T)ùnÎMSnŞòRÖu¥E'+Çï.¯.²]i9t²éÙÄíŸÅå±}åPöí#ë_IèV>A>à¤¾fnÓüW#®<“tâ‹G·?ybûú€u¬ÇÓëû,óÿØíß§Z†nyóĞˆ§NÍ½0gãì˜ˆcoû¥~ÿnPÁë¿ôØ¸"P»õ£gr?Şûá9ÛÕßª®Û‚Ø3ûfnıî§O¾˜:µa£v\ğáÙ/>w{nÎ³‡¼’:8pˆ·—ïóaİ®Ğİê5µâ¥Ä¹¿‡Ìœİtóúàİ;Ê‡½kZÀßäµúÖ½vY
+üœùøá°+[Ã®gï¶eåõù."|ğ™‰ÇåO¯eèÄòŠ€ÄSîE=^Sïö³°¶–Ÿû¶Ëw›Âb›v?¸ê£u>?¬³t÷v;<%zØ	™ŞòÂAı¹ÜÄ©»wõ˜³é½ãc,…oø­[£[âL×[¶œ»¼öPËŸSNLŸ×÷â‚Ùg¶'ª7L|:¥›_Ïô`~šôïˆ£>š}{æÅÔ‹‹ö>”<#¬*ş½/Ö¸ŸßXäÿàáB§İŞ3øËsAŸÿQ5æë¡l·s¶z/ÿ4(úÀ¥úªAÚü[™¹3ÏßX0æ±âè Æ>Ş}ŸÜMrm>f›%zÒÜ33»’?íÎõ‹¿}[~ûÎ¢5U?ÚtèpËˆ"v·×š7ç'îùjäÌ6Ç¬gU>¯è@ËvïÂC_È'N½’î7§Iûı˜“Ï¯ğ+7FvK½.q©lîœ²%¹µQ'F¼áyqèÊï¶»}PPĞgOï¢ˆ—&ïNÍ\oË<yrNj¿‰C{¤çmÚç‘ŸÜFws[¿S?Œİ´zú¤Z¿ıÕß5ıœÜteÿk•_ùqİÉõ{¼¾Øl	(}fØ†ÁW›_0ûàgÑsk^ì3Õşè`í¹s#Îdlòúnñ³‰¶Ä‡f^ûõúVÑûå÷™µ¦ dà¦ƒJ¾øîBóÆ3·Ÿ:|ıøÂÛ¶#{f¼ävêÖöŞ¸uqXÁ§[‚†\íáõÄãÚÁı²s‡y}}nnôŸU³F°Ú—s·N}6şDË!æâ¹£‡·n¶œ¨›Ğmİ—¾,;*çnz‹‹Ø] :@ì5'¬÷ş1=†™ıü‚Ç®Ÿ8Küqb~iË‚¤¥‡¦Çöÿ.liZÓ€õo}ä·íôºŸôqKü5uØÄÖMŸ~¢V¿à‡^Ï7ä·è^zbá±€ÃÓ»Y†NÚ½nøÛîşU'7y^¾ŸöyùÌ¨ÖDÏyl“ŞdÑí©½¼d%I•3Çt½°à£uDïY•ÑgÍû.ú¦nÏ¡kïXª¦Ÿ¹]:àÊÅ“ßœÛ£h­ú¨Ë¶h`şÖ5cvUÍµ÷8ôœJ{qìË¹·'oŸ=ótSjşwOzëÿÈ	‹¾ùÕŞ%»½zxLÑ¼ÛAkqş?™UîşÂ±ñÓ{µ¢Ó›½½Êyn]d‘˜{Nô(Ièî·JUÍ7¿ÑåÜ•$ÙŒæŞŞúµµRŸ¡oûŒŠšâ;÷½Q.ôí—ûnÿA}§õûÌ÷±>ÿ~æ÷Şåg?õÿsûsT^{¢›cıÍîüªëšØl¹"5¼Ç€;Š—W–ôŒ»ğr¯:m\Ø‰!«F®|õ€j§İ÷©ğ?Æñ-X>zÒS¥á3u¢Q)½ÒF¼˜·áÉû~zÂıcÿáß&Ûöãë!—f×<ş³{×ĞÕ¿ÎúhÕÇßvå‘“‡Œ›>`á#›zè_{\z0øëùƒûŸÙ¥ÔNkô’Ïèà¦€—†îËÙ6äÍÊ?ıüİ'+µ¼9÷æo)/}ñt¿ì…ğğÚ\åÄ„œyW{5ÿşÑ4ÿ4—?qGÌâÒ.yN?²è}ã’kûp“äåÛ+nytÏœWÆå?¦%ìÅúÕ-/ÌY¾}öäË¹Y¢IÃ2Ÿ»şœtñ—ÓÇôxşÙŒO•Ï$”ÕO;vâÃ™¿|3cÆ.ñC–çêf:İëããûëc˜ÖLh}öÌÄCŞñ¯§Æ~ğóú¸õoî×~Ùèu#^­)Z6nÜãßGd§0êÁÇí»‚Dê2¯&Î…&ŞcJö>^lXQj×ïşä©Iç‹t?æïM°<ŸzV8yùïOõÊû)Ã×4Lß4%UóbÚó}¾¤ÏçŠ_ºY÷Ç‘¯ÎŸü û—)ÛÂ/Î>yç·Çg•üêÑååa^a/üaxûİËÏ4MûıÂùÇl5…¿×ø´á›)Ï]j,é~Ûz´ºõí9oÜùØ3É1DŞ»¥ÏËµ·Æî»ÙôÅ{t½ÛõÅlùµ£
+»&k¯¾áİôòĞŸ-¯[n~ï˜xcÚÔù'“ŸÜUëÇµş4ò—Ñ§öüùÒ²qÛÙ£şùó¯1O®•Í>q%ããã;j¯[ºuè’÷§W…ş°©:kîÅš©½ƒÊï¤}÷Èköçş©b¼ÚßzØ\~+üõ}ï.«){İÖµtó—q‡6~·
+Fê@åÕ®¾`q;ùüòï{×”ºSôƒzİ—kr[Ÿ_ıèXå«×¯İ0úÃuŸ&ÎxãÚ¥‡^ÿnIİkvëG>Ï{]÷°ï,hy+èÅíë»{äşkÂîaÿÎ«¾şfÈœÅ+=fEÚ¹.+Ÿ#GV]~kIÑ©›cÉ²ñnû€ŠÂÂo²ßú¥,»¸¥ß’êŸN/M<¼¶àÙÌOù÷z¥Ë¼—oª:ÿñ»7ÿ Éø¤ù…÷?]4¿á‹˜nƒ¾ìöÙ‹Ÿ?\ñùgşK¯~ôXCè‡9I¦÷#Æ°}ÓõÈ§Şùäö¢÷Şzcï»UÙû·ÿö€ç×{?Rïà¾_V,;õıVÕWÌ¶éÌø¯’f’-™Øİc—ç}É°kv~]tf[ğÍOi©ßş>|ı^œÿ3gí)!•ŞŸüñåönÉoL_õxã™'O§Ï~xgØ‰·®ı]ÑDiŞŒºo^tÅıDÉ·Ç'ü\›u-4÷lAşlÊÆät-!Øå-/Ù?[YºğìçYgEJç™¾øÃ÷sşzÿ®Co¿?æí*ÿW±é=vUö»ŸVl9õ²tô—oš\¹Òû,•O•Û+[ŸÓ=&K¿üÆùÆ§Í¯¼ñë¨êW–Ïüºî©ŸS'®:2&84w¹üÂ¥_rS&u©ı]ùm‚ı»²qÿÆ7¢‡<”:1ùíó7^¿x­ôOkŞGêıK[Ÿ¯Úø„²x€å;ÿu7-üÈQ·w-
+Œ½ºªI~Ó½yTŠâß)c6Ø±ºï°š›ïpYGrÌæƒŸóZ¼·`Ú>Ï£s7¥÷
+¸øtÉÇMág{Äš+¯®[’ÿœßc‡ÎÎİ÷.Óå5ó«ìAVÉ3±›JNş¹şÅq«5­ùºŒ?ú<ù“!î‘~ÁjW¶¼ÿ^¡, ÷–SKŸ˜5rÍü£Ê¦ş/¬ß¨ÊXı&[8æ±5¿§¬”8mÜ×Ã¼ì²³›ãúí:rõÃËg_½Ã•<ªÕëß‰¢¹\ŞİøÒ™Çb„,i>•ô›æÙ›ÆÌn¶²5½2G”ÍcŠzrê…/tç¦¨‰ñ¯·İÈ.$_ô¼òdO»z™ä­GFï	ê_ÿ`Äü¤}y¢Ü2%Tµãéßÿ{gUûÿÿ3fìKD¨)R)²ïYJ–R’VƒÁ0f43ˆºµĞ¾j‘–íiI)RiO…ÒBZ”»E¢E¥~¯3FwÍıùşú=~÷çñøışğ>={]×9×v®ë¼Ï\çœ1gfõ³Éù)<ïè¼úÎéïJ÷Xrïy³Åå…«WÇİÎz=¸ Ãomğ”§Ì§9¤Ò×ìmâZö£]¬»Ç¡hW£ë©³‹¿R‡ñî=füûÃm	,2Ô²–Ï.š©_·‰1öJûlÓ<¯3g(7wG¸EëÍÌø˜doì»)#;è]«Á3ªNÌ¸”Ú÷««CŸ¿<V<q5½Ü¶¹(¹Îƒˆ*í_Zõ—yÃÒ5SÂÌ˜5d²¢·œÚsJîîYÊiîÑCştšæ–ñ|ıïCnìV[<ç¸°ñ’Êõ:ÕuûÊ{¨éØ$ìqñ®*%9ä[^%ëÁÕ­»¦zfh·äÚê¼6Sm´ì›q	aËZo¬2rğÂíS¸_Òğ«¾ëİîùŸ®Ùò²ùbGáÊí£B•ßêÈ±}¶—ùmuºo3(ÍzóºŒ	ßLM7Ÿ˜dôµşE–ú¬ •‰ZV7Lmrx/Wİä"ÍXZ’şè‰Æ‡ÀÓ›½3'·ö—]Èqg:ßŞcÅÅÊ\Û;·y5AFç¸…ËæÖ¼¹zW£?]¾`{ãÓ¾½Ú$í[Ë®Ğ8¢œx p{ù	û‹)”ùßr·=Û¬i¨`“cÃõÓ[½W+bqù¬{ÎÃêyÃ¼OÜÚğv}cSqÁo¥}Mt½œo2™ÎırîÃıæ=é‘~ıró¯%ßPn`ˆh•¥Ö“şŸ(g–ñF™9l3İï¤\ìy¸èö5Ía»­³Â7îT¾¿Ô"éAñ®GwšûnºY·”~ÌghJÁÜSÏ‹MäÖÖO×?®Ïx×vb–WZ™[}Ÿ{·ÿˆ}øôeûí"¿Ô[‹.ip2§„Çì;ÓÚ‘¼œuåU/J o˜,§î³Êˆ°U4¥÷\Æe¶êÌ;!nOwDÎâ;I?­+sÛó¦Ò¢ÎİòE1ÖEû><’É¹_r¥æ`i‡«Å]Î“Ññj”*T˜nTgvĞ¯p¸\ë7ÿtS«ÿÑö¢)…ç*OnÜ\|j·Ê`©â¬`êRÚEÅº#
+Í†Ãys—L‹òQ;ËÔ?p,ÂdDÂ·µ”û³d3o2J[î¨Ï*X´LöXQ¿ìÓOw¿(¾m9[îÊ¢Ã*ƒ¾ou£r¦ö¼h¥Zì“ôpÎ¦¦°@JLŒ_»‡ºˆev÷](1#»ñµ.e÷œ…´ö³ïUÎOeå×]T?Ş<aEYñ__O,úP¿Aó‰÷Ê[sÛ¾Üöa;ÂœæPäwcg)!¼]böxLÃn·w7Öîª>{«¦ıË(vs´·îë¡È¥÷BŠ«ÜeL–ÒúÏöËû?Tš{eu–Ó )·ıe
+ªªW‹§Fdğˆ¸M¿Á|š=³¾CyHİ•ÌüªÌ—j÷^8¢·éQ¥ÇO:9É9ôº8•±åtá1éc…7·üuÇÓşÏ›‰‡eîi
+h¥>	SPßî˜¦íœ°ï©r¥Âzú÷?å‰¼AÈe¼UYï¾„¶óf_Ê»(¶lù·¡Sƒæ³"+t86³¸1²Ï¿İÖMXvkè#Õ{É‘Ç\ë8ÑÀ[]ÖÒÑûxÙ¨üÕwjjv¾Ø^½>Åînùyß†w«K"[÷”Nt)’}èuÄfì]¥¡÷ËëúØHùà&“ÒÒrn_dÃdsîêvYR³peiDjŸ¼›9£Û\SLÜX¢à)=@JëÄdªÑğ'ËœR<ôhÀºÀÂh™òÚï{‹ª*Í‡Õe­˜QŸ§¿5¼<ÿUØ;£øèÛ¤b×Ëo£Ëæ¾T¶qáËE.¢S56³ğqqr¯9CóéÚ­»¹zë³;eJs´W¸ßĞñ­›·[o?õ°ğS¿{©ÜeZ×?œ0šÁËOlÔ>î™¸”Ğô]%:.BÖñªE!p+ëû§Ğ<63æû--NåèùÇ³k•n¾/“:É^º°|o¤³*Dë£7Ûsœ37ñ~^uô˜ºš€®
+¶wßæ–æù×—d]ğ<R9Ï¬è{ó©Sïô®,_î_¸ŞÌğèÎ='«l¨×ke×OªŸ:Ä .òtaD²éyæ˜â (])cŞĞGÊlÏ)®Ş@mĞ5‘j!Ğ–ĞÑ5w³°	]8ÔÄÿ\8ç‚Ì‰í£§ì]ìë–qérİrZuy‰÷ç–ËŸ´×U,òU,ÊK—•j²zI¦^å˜ru?ÿ:ÕÙíq·˜-nëLój'Û5õÒË,ª¥¦¦e,ÔÍœ¾•ÈÕÎ7ù|?×¦bKSbPĞwGï¶›KÃõ å¬i†;Vfk>Ù{ÄƒQ–›Èl}Ñ¸çE[Õósõ©†÷.aåíw÷È~É‹¹68!®“mo“Ç0hQ£S×³‹mğ°i»$wäuÜ¤Yí1,³ã¶;ÌË-ÓK_+—cÕ;»ô‹rÚª“së“œ´Ø	Ú’¾G¿ğ*s» ûÇ´zc§·I¾ÔæĞ÷r_“%÷'é]Ü ¹œ²J¹ÄuÁ‹ÔÓvuåv9”ú—´ûÈgì]£±*ãFà5‚>ºÖÜ‹û9tEb£ÿÕ“%A“væp4—®r©IÏPŞT_›9áÒµ\µWŸo¾ÿ\±Z“Ô¤ï:©¨~ºoZ¶–²ú4MC»¸{#Ü¶²:cöÎm
+hšZA8¾Ê.œ’·S{yöcË½×ú—v†2l<|Ô¥êM¶zªÉbúÎ/ÃUşš}Iñò˜•5Ü%éƒ¡×q}º®PFİØz¬é»‰^«
+“Xõq!)-æÏ›Ú¾}ë,?}§*}îµŠœ©Ëm>oI—+)(4{ß^–½cjæØ™¹òô¢ÏWTó*–·ùz´s”cë\®Ë•W¶¨úËÍ@ê,'îìİD·ù›lj=W›4Éî&Š.”ê¦¥Ír[Ş'* dÆ¨Ä™œº:Mß¾Š6)ÁƒtM¶9zOdê9©æş+òB×®+ò¯~Ø~Aë|KûÔ–ò½>ÔeÜÉ“+m>®·jß6óú˜EÆ-ÆWc’^ßŠó:ø)H—×èalQoÓ8ï‚\.ÿÃÆµ±Hi{¦›[¾Ë,-=rHvÑÓyÅõÙ5m×*_tÎ™ŸSºùH@ç‘lºó4»yÃôó­å4[û{XÈ™'
+¼âúÅT½OöHµ	:’Xñ¹vüÍÆ&•kE×Õ¦­:œ¡>æØ*…?sâ.§•¸-“6òècÇ‘3×t9?XYyQ¤oæÈ”I¹Ò““>Ÿñ	­X°ÀîB¿Lƒö™…Ê{ÿÜ¯™ñàÙ$B÷«¯y@mhèæIşw½}{Oøœ2eN­ÉÆĞkz·MV-×°Ê(™Ø¯äEºlN]ÕÌ”¶W¬òC¯tn¼Îpu›t¹\šá¤h5ÖĞŒ½IO×”zíŞ•®qj¹ñ w¥^V­Ú~¦³>´®©Å Wiã)¥½U_–§º¸¤I‰«2<Á®Ğü4²ÉÃqFgbòVLÑ…”€ö7ştÛ^v	Åô¼‚íêÙo—»\³\oØÉ'ıŸRm+v›+åQ6]¾ïlEùK™UsP}µ)kø«T;®QÚ´¨FqrK#½OG8íîzù,y…@ÏzF;ãôŸ^ñì·#±oßı!ºÃöyÍÜª} ¡\‡]ô^İúİe™ßÕ
+Œö¨
+|Ò5zõúff U¼:¹wòÓqvã<Ù¯Vëxeİj…O'\Üß89/NSp:ã0q„Ô–ÍÌŞÓl·ıÁ³¾wÎÆJ;—b>õtšÙÆ;…·bş²T£<4Œy¶v`îš½ƒZÌ¿™Ì¸b:Îg@Î 9Œ¦Íú¶iÏ>:xèÉú~C¾†xv–Ÿe2K¯}XaÂ9Ó÷—··İq(nËª3³¦=ÿ(è;=ÿÀrsâúz	~¾C…½[ùñw¶NYö`ö¼±Ç|ÿP¢iÍ­íŸ4_¸köÈ¾ë“er®Î¹xµ“Sjš›â¾„g÷¹ûymsLÑbNtâ«Qæ¥ØmvÖ¡‡çÑÂb5]˜CD„4Ÿõcí©½~êIÄ é“‘Ø«¼j+ŞšÛ{õï7~Lz|’o}Ø×ñzô
+Ÿ€ãëÆe>Üíq~K¦§ìÛÃ£]Çp_hxÖíº…»«Ê4ÁHï&ãQ+VêOjš0ÙR*rj|©ó”ã5tÿOgVNtØ_2an¯Ç~e)wÛ¿˜Áğo˜ñzñ´]K
+‚^¦[ù"=“7: øĞğØFkİù>Î:ş¸ òÍÁîº&§ÂÀçßêbGZ<MV¢¶±{ó”¡òjGÖ”×!íÌÃ?m~½ôÖË6ËÿbêÔ(~ûµúæ¥o›8Yß'Ëæ~î£:ìËİdİ¬ó#?æÅ·Í^ïÊSç½MaÔê1U­î¶á}ÅĞWmüüÁ÷ûõºÙA!wOÚN½÷u™ò}ç'öõ³Ş—6f¯xø¾ÿÍ¶cŸÕÆ(Ş­Éh¹İr÷Ø“#ªBwÉTçÜ°¼Õ}Ó°OĞ…™ßTÏoÛ0èâ=ã”KÚ®ŞåS§\;·ÑéËÙ[wœQ{±±bÜá}W×\È¾|eÎÅ+
+j­×Üå„×Çª<s«Ï©&é‡3\×Æ~M\7t¤éúæÁ:{œ·m
+Ÿt`ã€¿Şmx4ÿBvé¥OY)‡*·Ùidüù9i{fÏps"Uc«yÉ˜-mÕ¬Zfm¶rl°Üj¥Æ™k*W°—ÏÿóÕŠ‘ï/“ñ^¸ô¢AQê–ğ¥§)Ÿß7¿iÁƒ{Õië¯MZä·'lIom‡ÅwøJ¹«rö1NnÚ!sãÀ.nGŞËÙsQ{ˆwPıà¡‹÷¶.ĞŞcùrø®øÉ	»»¸å|r~»Ã¨¶s;÷ï(ÛôgÑyAÕQYçÇ\÷–_x}Ù‘ë÷U
+¼UBóW°&—Ôˆ:©é\ìÿAöDú6óÒúåGOé=J=0ó^Y¦ù³“Dqi$k?ıò
+õ¢ÃoÖ„nšj[ÿÖb`Lğƒ?kíN\8:¸åšïrŞ©Gáµ”%”15§‹ßEß}ø¨!ÑrZ˜ê”	:S³_ì6ûüY5»×ÈƒŸf5Ì9s9òÒŞCñ|Ú¨ë7xFÍ‹3QÓÖtÙuüËíª¬>•/í¬™‘q–ìy%Çâ°³öêË3ä#‹,!ª†O°coz¬¸húÛÇ#mZÂZ¼¤ú¡Ã££•k|-»üõTuñÄi‰O\_ßUúäw:êíĞOÛ½6eŸ`fü8kªï<oŞ‡Kïiëï¸îı#öëmëìªñ«ÍÎĞ¾0Èx^ÎÉNO)7Æ\Õö5ëöy½ø¸µ×´û\¦™ë¯=¶lûÇ[½*£^İ§R6O®Qö\HÚÌœ¸›Mz½·çO÷Ñlpª.¾ˆ2ÿÑœŠáÊç½b*”Tv
+¢.1e.©+Îñqçe¾ÿzëûÚ7R¦Ü³ÕU>1hÜ1ªëà]ù-õ—î\p?¿}dí¼¡7g§¯çökw4ú(ºemDúp—¥CÖO{}Ô=d’â'9ó¾ãö5ìi­<ùm]Ã+Óâe“¶ö|5(NjÖ[¯’+>ÃëïwÌ7ı|rŒKÎ¶[©—:ÎÚDõNZ®Âd[Ø8!oü¤ï®^dÌ[±T eÛ¢%³ĞõS©ó ?û7÷3Ü<y¶ÛŠGµ‡-ó¯¾~Ìqò³ê™Rò¿¿Ò¹êØŸso‰ı²Eóó¸Õ«~u{­_GÁÂ§S‚¦™;ì]COígÉmRZ|–Vä°'ö”kã.ê×Åg{{~øıø1Ú–g©ed-›ÍØT§?»ıÊØ3^y¦7;)g¢İ"vÌ˜©çklŸ”±é™Aë»q1:Ô÷µ)!ÏC«W×{YN_=1¹¨Ù6Šğ¨«*í_º´Áü/³°)kÔt0·DgÉÈÚsê4åìİCG¹6š4º¿>ü–İ7†|?>g±šÊ¥Fá:ÕºëÆËöÙé¨yÌß`p÷bD|H2E•_™÷íªàÊÖ©»Z´hgxv²Ï­6óZÂ¸7²7Z—…=p7ZşÉíEÇğ$?·õ}­ü
+î½ÜRsº°ãb³Âèí+uŞ*‡n÷aË9mõ+Kds?cİfkSÓoŒ&Øœõ¢şëÊ YêVZ‰¹6¦7Ô–{vi]’º€ñäQzÂŒÀŞÍÓ;[';grÊö¿íÌt¿¸âÆşÛÜÊšynvÜsFAs–¿ú¦fº~¯q{|[¯¾OÇîKZ QÁ®=¨|äDùö@JÊEûm¹ßæjn~†Ë…Õz~ÜÅZ{ïÍ*Æ«¶áÖ	oºÌ‚·ÅMw*yÏÑ-0í;ê¦³×ît“æûÎùE¦ï¹–ŸÛO¨x#9âsC=U¶•ÎŠà0…,†èKŒQ¼¸$>;2JÈ0···6±037cŒa1¹&^|Ã“Éæp’Ln8c“Ãpç°øŒ_¿t0À'@†!h€aH†©„*b]aY‚A.†]iT±¬ä@ƒ’ë»Ãó±t…äÛD(d˜IQ™®°aU2Üı]4ƒ/dğ"±¬X?	ëœ"Â†;ñÜ./‘Ëˆb1ÃÑ^ìo¤€!`	ÉævoãÅÆñY›ÇEÂ(^8A°¹BŸËä0X|>ïÀ`s»ºJ ä³˜±ÈÂçÇÇ	É2X³ãXaBV8ƒ…®A"Ø™ŸL‚‹)Œb„E±Âb¢».¤g
+™]Å?§­§&>kV<K@/.'œÇ0¸<!ê¢Uø'Úñşóy¼X†Çˆ‹U2ùL4/øçşt½äşB~¥”6¨½hBüE'Z0#úBUNá€§çtı £EsEü¶Ë"<h#¾–ĞsDx6°C¼ŠP“SC8
+F<ŠhKâo‘_áI ¡I{‚üCFãhVØ~ù•Æ Ñß%Ó§wÄ_ ?Y^ ĞC<“è%çğ\à„ø]ìOo„9`âÅPE°ø ş	ù¥ÔQÿNÔo€0F‰fíçQ¿Â¡` â» R`!‰ø/*
+ * copyright (c) 2001 Fabrice Bellard
+ *
+ * This file is part of FFmpeg.
+ *
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+#ifndef AVFORMAT_AVIO_H
+#define AVFORMAT_AVIO_H
+
+/**
+ * @file
+ * @ingroup lavf_io
+ * Buffered I/O operations
+ */
+
+#include <stdint.h>
+
+#include "libavutil/common.h"
+#include "libavutil/dict.h"
+#include "libavutil/log.h"
+
+#include "libavformat/version.h"
+
+
+#define AVIO_SEEKABLE_NORMAL 0x0001 /**< Seeking works like for a local file */
+
+/**
+ * Callback for checking whether to abort blocking functions.
+ * AVERROR_EXIT is returned in this case by the interrupted
+ * function. During blocking operations, callback is called with
+ * opaque as parameter. If the callback returns 1, the
+ * blocking operation will be aborted.
+ *
+ * No members can be added to this struct without a major bump, if
+ * new elements have been added after this struct in AVFormatContext
+ * or AVIOContext.
+ */
+typedef struct AVIOInterruptCB {
+    int (*callback)(void*);
+    void *opaque;
+} AVIOInterruptCB;
+
+/**
+ * Bytestream IO Context.
+ * New fields can be added to the end with minor version bumps.
+ * Removal, reordering and changes to existing fields require a major
+ * version bump.
+ * sizeof(AVIOContext) must not be used outside libav*.
+ *
+ * @note None of the function pointers in AVIOContext should be called
+ *       directly, they should only be set by the client application
+ *       when implementing custom I/O. Normally these are set to the
+ *       function pointers specified in avio_alloc_context()
+ */
+typedef struct AVIOContext {
+    /**
+     * A class for private options.
+     *
+     * If this AVIOContext is created by avio_open2(), av_class is set and
+     * passes the options down to protocols.
+     *
+     * If this AVIOContext is manually allocated, then av_class may be set by
+     * the caller.
+     *
+     * warning -- this field can be NULL, be sure to not pass this AVIOContext
+     * to any av_opt_* functions in that case.
+     */
+    const AVClass *av_class;
+    unsigned char *buffer;  /**< Start of the buffer. */
+    int buffer_size;        /**< Maximum buffer size */
+    unsigned char *buf_ptr; /**< Current position in the buffer */
+    unsigned char *buf_end; /**< End of the data, may be less than
+                                 buffer+buffer_size if the read function returned
+                                 less data than requested, e.g. for streams where
+                                 no more data has been received yet. */
+    void *opaque;           /**< A private pointer, passed to the read/write/seek/...
+                                 functions. */
+    int (*read_packet)(void *opaque, uint8_t *buf, int buf_size);
+    int (*write_packet)(void *opaque, uint8_t *buf, int buf_size);
+    int64_t (*seek)(void *opaque, int64_t offset, int whence);
+    int64_t pos;            /**< position in the file of the current buffer */
+    int must_flush;         /**< true if the next seek should flush */
+    int eof_reached;        /**< true if eof reached */
+    int write_flag;         /**< true if open for writing */
+    int max_packet_size;
+    unsigned long checksum;
+    unsigned char *checksum_ptr;
+    unsigned long (*update_checksum)(unsigned long checksum, const uint8_t *buf, unsigned int size);
+    int error;              /**< contains the error code or 0 if no error happened */
+    /**
+     * Pause or resume playback for network streaming protocols - e.g. MMS.
+     */
+    int (*read_pause)(void *opaque, int pause);
+    /**
+     * Seek to a given timestamp in stream with the specified stream_index.
+     * Needed for some network streaming protocols which don't support seeking
+     * to byte position.
+     */
+    int64_t (*read_seek)(void *opaque, int stream_index,
+                         int64_t timestamp, int flags);
+    /**
+     * A combination of AVIO_SEEKABLE_ flags or 0 when the stream is not seekable.
+     */
+    int seekable;
+
+    /**
+     * max filesize, used to limit allocations
+     * This field is internal to libavformat and access from outside is not allowed.
+     */
+    int64_t maxsize;
+
+    /**
+     * avio_read and avio_write should if possible be satisfied directly
+     * instead of going through a buffer, and avio_seek will always
+     * call the underlying seek function directly.
+     */
+    int direct;
+
+    /**
+     * Bytes read statistic
+     * This field is internal to libavformat and access from outside is not allowed.
+     */
+    int64_t bytes_read;
+
+    /**
+     * seek statistic
+     * This field is internal to libavformat and access from outside is not allowed.
+     */
+    int seek_count;
+
+    /**
+     * writeout statistic
+     * This field is internal to libavformat and access from outside is not allowed.
+     */
+    int writeout_count;
+
+    /**
+     * Original buffer size
+     * used internally after probing and ensure seekback to reset the buffer size
+     * This field is internal to libavformat and access from outside is not allowed.
+     */
+    int orig_buffer_size;
+} AVIOContext;
+
+/* unbuffered I/O */
+
+/**
+ * Return the name of the protocol that will handle the passed URL.
+ *
+ * NULL is returned if no protocol could be found for the given URL.
+ *
+ * @return Name of the protocol or NULL.
+ */
+const char *avio_find_protocol_name(const char *url);
+
+/**
+ * Return AVIO_FLAG_* access flags corresponding to the access permissions
+ * of the resource in url, or a negative value corresponding to an
+ * AVERROR code in case of failure. The returned access flags are
+ * masked by the value in flags.
+ *
+ * @note This function is intrinsically unsafe, in the sense that the
+ * checked resource may change its existence or permission status from
+ * one call to another. Thus you should not trust the returned value,
+ * unless you are sure that no other processes are accessing the
+ * checked resource.
+ */
+int avio_check(const char *url, int flags);
+
+/**
+ * Allocate and initialize an AVIOContext for buffered I/O. It must be later
+ * freed with av_free().
+ *
+ * @param buffer Memory block for input/output operations via AVIOContext.
+ *        The buffer must be allocated with av_malloc() and friends.
+ * @param buffer_size The buffer size is very important for performance.
+ *        For protocols with fixed blocksize it should be set to this blocksize.
+ *        For others a typical size is a cache page, e.g. 4kb.
+ * @param write_flag Set to 1 if the buffer should be writable, 0 otherwise.
+ * @param opaque An opaque pointer to user-specific data.
+ * @param read_packet  A function for refilling the buffer, may be NULL.
+ * @param write_packet A function for writing the buffer contents, may be NULL.
+ *        The function may not change the input buffers content.
+ * @param seek A function for seeking to specified byte position, may be NULL.
+ *
+ * @return Allocated AVIOContext or NULL on failure.
+ */
+AVIOContext *avio_alloc_context(
+                  unsigned char *buffer,
+                  int buffer_size,
+                  int write_flag,
+                  void *opaque,
+                  int (*read_packet)(void *opaque, uint8_t *buf, int buf_size),
+                  int (*write_packet)(void *opaque, uint8_t *buf, int buf_size),
+                  int64_t (*seek)(void *opaque, int64_t offset, int whence));
+
+void avio_w8(AVIOContext *s, int b);
+void avio_write(AVIOContext *s, const unsigned char *buf, int size);
+void avio_wl64(AVIOContext *s, uint64_t val);
+void avio_wb64(AVIOContext *s, uint64_t val);
+void avio_wl32(AVIOContext *s, unsigned int val);
+void avio_wb32(AVIOContext *s, unsigned int val);
+void avio_wl24(AVIOContext *s, unsigned int val);
+void avio_wb24(AVIOContext *s, unsigned int val);
+void avio_wl16(AVIOContext *s, unsigned int val);
+void avio_wb16(AVIOContext *s, unsigned int val);
+
+/**
+ * Write a NULL-terminated string.
+ * @return number of bytes written.
+ */
+int avio_put_str(AVIOContext *s, const char *str);
+
+/**
+ * Convert an UTF-8 string to UTF-16LE and write it.
+ * @return number of bytes written.
+ */
+int avio_put_str16le(AVIOContext *s, const char *str);
+
+/**
+ * Passing this as the "whence" parameter to a seek function causes it to
+ * return the filesize without seeking anywhere. Supporting this is optional.
+ * If it is not supported then the seek function will return <0.
+ */
+#define AVSEEK_SIZE 0x10000
+
+/**
+ * Oring this flag as into the "whence" parameter to a seek function causes it to
+ * seek by any means (like reopening and linear reading) or other normally unreasonable
+ * means that can be extremely slow.
+ * This may be ignored by the seek code.
+ */
+#define AVSEEK_FORCE 0x20000
+
+/**
+ * fseek() equivalent for AVIOContext.
+ * @return new position or AVERROR.
+ */
+int64_t avio_seek(AVIOContext *s, int64_t offset, int whence);
+
+/**
+ * Skip given number of bytes forward
+ * @return new position or AVERROR.
+ */
+int64_t avio_skip(AVIOContext *s, int64_t offset);
+
+/**
+ * ftell() equivalent for AVIOContext.
+ * @return position or AVERROR.
+ */
+static av_always_inline int64_t avio_tell(AVIOContext *s)
+{
+    return avio_seek(s, 0, SEEK_CUR);
+}
+
+/**
+ * Get the filesize.
+ * @return filesize or AVERROR
+ */
+int64_t avio_size(AVIOContext *s);
+
+/**
+ * feof() equivalent for AVIOContext.
+ * @return non zero if and only if end of file
+ */
+int url_feof(AVIOContext *s);
+
+/** @warning currently size is limited */
+int avio_printf(AVIOContext *s, const char *fmt, ...) av_printf_format(2, 3);
+
+/**
+ * Force flushing of buffered data to the output s.
+ *
+ * Force the buffered data to be immediately written to the output,
+ * without to wait to fill the internal buffer.
+ */
+void avio_flush(AVIOContext *s);
+
+/**
+ * Read size bytes from AVIOContext into buf.
+ * @return number of bytes read or AVERROR
+ */
+int avio_read(AVIOContext *s, unsigned char *buf, int size);
+
+/**
+ * @name Functions for reading from AVIOContext
+ * @{
+ *
+ * @note return 0 if EOF, so you cannot use it if EOF handling is
+ *       necessary
+ */
+int          avio_r8  (AVIOContext *s);
+unsigned int avio_rl16(AVIOContext *s);
+unsigned int avio_rl24(AVIOContext *s);
+unsigned int avio_rl32(AVIOContext *s);
+uint64_t     avio_rl64(AVIOContext *s);
+unsigned int avio_rb16(AVIOContext *s);
+unsigned int avio_rb24(AVIOContext *s);
+unsigned int avio_rb32(AVIOContext *s);
+uint64_t     avio_rb64(AVIOContext *s);
+/**
+ * @}
+ */
+
+/**
+ * Read a string from pb into buf. The reading will terminate when either
+ * a NULL character was encountered, maxlen bytes have been read, or nothing
+ * more can be read from pb. The result is guaranteed to be NULL-terminated, it
+ * will be truncated if buf is too small.
+ * Note that the string is not interpreted or validated in any way, it
+ * might get truncated in the middle of a sequence for multi-byte encodings.
+ *
+ * @return number of bytes read (is always <= maxlen).
+ * If reading ends on EOF or error, the return value will be one more than
+ * bytes actually read.
+ */
+int avio_get_str(AVIOContext *pb, int maxlen, char *buf, int buflen);
+
+/**
+ * Read a UTF-16 string from pb and convert it to UTF-8.
+ * The reading will terminate when either a null or invalid character was
+ * encountered or maxlen bytes have been read.
+ * @return number of bytes read (is always <= maxlen)
+ */
+int avio_get_str16le(AVIOContext *pb, int maxlen, char *buf, int buflen);
+int avio_get_str16be(AVIOContext *pb, int maxlen, char *buf, int buflen);
+
+
+/**
+ * @name URL open modes
+ * The flags argument to avio_open must be one of the following
+ * constants, optionally ORed with other flags.
+ * @{
+ */
+#define AVIO_FLAG_READ  1                                      /**< read-only */
+#define AVIO_FLAG_WRITE 2                                      /**< write-only */
+#define AVIO_FLAG_READ_WRITE (AVIO_FLAG_READ|AVIO_FLAG_WRITE)  /**< read-write pseudo flag */
+/**
+ * @}
+ */
+
+/**
+ * Use non-blocking mode.
+ * If this flag is set, operations on the context will return
+ * AVERROR(EAGAIN) if they can not be performed immediately.
+ * If this flag is not set, operations on the context will never return
+ * AVERROR(EAGAIN).
+ * Note that this flag does not affect the opening/connecting of the
+ * context. Connecting a protocol will always block if necessary (e.g. on
+ * network protocols) but never hang (e.g. on busy devices).
+ * Warning: non-blocking protocols is work-in-progress; this flag may be
+ * silently ignored.
+ */
+#define AVIO_FLAG_NONBLOCK 8
+
+/**
+ * Use direct mode.
+ * avio_read and avio_write should if possible be satisfied directly
+ * instead of going through a buffer, and avio_seek will always
+ * call the underlying seek function directly.
+ */
+#define AVIO_FLAG_DIRECT 0x8000
+
+/**
+ * Create and initialize a AVIOContext for accessing the
+ * resource indicated by url.
+ * @note When the resource indicated by url has been opened in
+ * read+write mode, the AVIOContext can be used only for writing.
+ *
+ * @param s Used to return the pointer to the created AVIOContext.
+ * In case of failure the pointed to value is set to NULL.
+ * @param url resource to access
+ * @param flags flags which control how the resource indicated by url
+ * is to be opened
+ * @return >= 0 in case of success, a negative value corresponding to an
+ * AVERROR code in case of failure
+ */
+int avio_open(AVIOContext **s, const char *url, int flags);
+
+/**
+ * Create and initialize a AVIOContext for accessing the
+ * resource indicated by url.
+ * @note When the resource indicated by url has been opened in
+ * read+write mode, the AVIOContext can be used only for writing.
+ *
+ * @param s Used to return the pointer to the created AVIOContext.
+ * In case of failure the pointed to value is set to NULL.
+ * @param url resource to access
+ * @param flags flags which control how the resource indicated by url
+ * is to be opened
+ * @param int_cb an interrupt callback to be used at the protocols level
+ * @param options  A dictionary filled with protocol-private options. On return
+ * this parameter will be destroyed and replaced with a dict containing options
+ * that were not found. May be NULL.
+ * @return >= 0 in case of success, a negative value corresponding to an
+ * AVERROR code in case of failure
+ */
+int avio_open2(AVIOContext **s, const char *url, int flags,
+               const AVIOInterruptCB *int_cb, AVDictionary **options);
+
+/**
+ * Close the resource accessed by the AVIOContext s and free it.
+ * This function can only be used if s was opened by avio_open().
+ *
+ * The internal buffer is automatically flushed before closing the
+ * resource.
+ *
+ * @return 0 on success, an AVERROR < 0 on error.
+ * @see avio_closep
+ */
+int avio_close(AVIOContext *s);
+
+/**
+ * Close the resource accessed by the AVIOContext *s, free it
+ * and set the pointer pointing to it to NULL.
+ * This function can only be used if s was opened by avio_open().
+ *
+ * The internal buffer is automatically flushed before closing the
+ * resource.
+ *
+ * @return 0 on success, an AVERROR < 0 on error.
+ * @see avio_close
+ */
+int avio_closep(AVIOContext **s);
+
+
+/**
+ * Open a write only memory stream.
+ *
+ * @param s new IO context
+ * @return zero if no error.
+ */
+int avio_open_dyn_buf(AVIOContext **s);
+
+/**
+ * Return the written size and a pointer to the buffer. The buffer
+ * must be freed with av_free().
+ * Padding of FF_INPUT_BUFFER_PADDING_SIZE is added to the buffer.
+ *
+ * @param s IO context
+ * @param pbuffer pointer to a byte buffer
+ * @return the length of the byte buffer
+ */
+int avio_close_dyn_buf(AVIOContext *s, uint8_t **pbuffer);
+
+/**
+ * Iterate through names of available protocols.
+ *
+ * @param opaque A private pointer representing current protocol.
+ *        It must be a pointer to NULL on first iteration and will
+ *        be updated by successive calls to avio_enum_protocols.
+ * @param output If set to 1, iterate over output protocols,
+ *               otherwise over input protocols.
+ *
+ * @return A static string containing the name of current protocol or NULL
+ */
+const char *avio_enum_protocols(void **opaque, int output);
+
+/**
+ * Pause and resume playing - only meaningful if using a network streaming
+ * protocol (e.g. MMS).
+ *
+ * @param h     IO context from which to call the read_pause function pointer
+ * @param pause 1 for pause, 0 for resume
+ */
+int     avio_pause(AVIOContext *h, int pause);
+
+/**
+ * Seek to a given timestamp relative to some component stream.
+ * Only meaningful if using a network streaming protocol (e.g. MMS.).
+ *
+ * @param h IO context from which to call the seek function pointers
+ * @param stream_index The stream index that the timestamp is relative to.
+ *        If stream_index is (-1) the timestamp should be in AV_TIME_BASE
+ *        units from the beginning of the presentation.
+ *        If a stream_index >= 0 is used and the protocol does not support
+ *        seeking based on component streams, the call will fail.
+ * @param timestamp timestamp in AVStream.time_base units
+ *        or if there is no stream specified then in AV_TIME_BASE units.
+ * @param flags Optional combination of AVSEEK_FLAG_BACKWARD, AVSEEK_FLAG_BYTE
+ *        and AVSEEK_FLAG_ANY. The protocol may silently ignore
+ *        AVSEEK_FLAG_BACKWARD and AVSEEK_FLAG_ANY, but AVSEEK_FLAG_BYTE will
+ *        fail if used and not supported.
+ * @return >= 0 on success
+ * @see AVInputFormat::read_seek
+ */
+int64_t avio_seek_time(AVIOContext *h, int stream_index,
+                       int64_t timestamp, int flags);
+
+#endif /* AVFORMAT_AVIO_H */
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               /*
+ * Version macros.
+ *
+ * This file is part of FFmpeg.
+ *
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+#ifndef AVFORMAT_VERSION_H
+#define AVFORMAT_VERSION_H
+
+/**
+ * @file
+ * @ingroup libavf
+ * Libavformat version macros
+ */
+
+#include "libavutil/version.h"
+
+#define LIBAVFORMAT_VERSION_MAJOR 55
+#define LIBAVFORMAT_VERSION_MINOR 37
+#define LIBAVFORMAT_VERSION_MICRO 102
+
+#define LIBAVFORMAT_VERSION_INT AV_VERSION_INT(LIBAVFORMAT_VERSION_MAJOR, \
+                                               LIBAVFORMAT_VERSION_MINOR, \
+                                               LIBAVFORMAT_VERSION_MICRO)
+#define LIBAVFORMAT_VERSION     AV_VERSION(LIBAVFORMAT_VERSION_MAJOR,   \
+                                           LIBAVFORMAT_VERSION_MINOR,   \
+                                           LIBAVFORMAT_VERSION_MICRO)
+#define LIBAVFORMAT_BUILD       LIBAVFORMAT_VERSION_INT
+
+#define LIBAVFORMAT_IDENT       "Lavf" AV_STRINGIFY(LIBAVFORMAT_VERSION)
+
+/**
+ * FF_API_* defines may be placed below to indicate public API that will be
+ * dropped at a future version bump. The defines themselves are not part of
+ * the public API and may change, break or disappear at any time.
+ */
+#ifndef FF_API_REFERENCE_DTS
+#define FF_API_REFERENCE_DTS            (LIBAVFORMAT_VERSION_MAJOR < 56)
+#endif
+
+#ifndef FF_API_ALLOC_OUTPUT_CONTEXT
+#define FF_API_ALLOC_OUTPUT_CONTEXT    (LIBAVFORMAT_VERSION_MAJOR < 56)
+#endif
+#ifndef FF_API_FORMAT_PARAMETERS
+#define FF_API_FORMAT_PARAMETERS       (LIBAVFORMAT_VERSION_MAJOR < 56)
+#endif
+#ifndef FF_API_NEW_STREAM
+#define FF_API_NEW_STREAM              (LIBAVFORMAT_VERSION_MAJOR < 56)
+#endif
+#ifndef FF_API_SET_PTS_INFO
+#define FF_API_SET_PTS_INFO            (LIBAVFORMAT_VERSION_MAJOR < 56)
+#endif
+#ifndef FF_API_CLOSE_INPUT_FILE
+#define FF_API_CLOSE_INPUT_FILE        (LIBAVFORMAT_VERSION_MAJOR < 56)
+#endif
+#ifndef FF_API_READ_PACKET
+#define FF_API_READ_PACKET             (LIBAVFORMAT_VERSION_MAJOR < 56)
+#endif
+#ifndef FF_API_ASS_SSA
+#define FF_API_ASS_SSA                 (LIBAVFORMAT_VERSION_MAJOR < 56)
+#endif
+#ifndef FF_API_R_FRAME_RATE
+#define FF_API_R_FRAME_RATE            1
+#endif
+#endif /* AVFORMAT_VERSION_H */
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  /*
+ * copyright (c) 2006 Mans Rullgard
+ *
+ * This file is part of FFmpeg.
+ *
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+#ifndef AVUTIL_ADLER32_H
+#define AVUTIL_ADLER32_H
+
+#include <stdint.h>
+#include "attributes.h"
+
+/**
+ * @file
+ * Public header for libavutil Adler32 hasher
+ *
+ * @defgroup lavu_adler32 Adler32
+ * @ingroup lavu_crypto
+ * @{
+ */
+
+/**
+ * Calculate the Adler32 checksum of a buffer.
+ *
+ * Passing the return value to a subsequent av_adler32_update() call
+ * allows the checksum of multiple buffers to be calculated as though
+ * they were concatenated.
+ *
+ * @param adler initial checksum value
+ * @param buf   pointer to input buffer
+ * @param len   size of input buffer
+ * @return      updated checksum
+ */
+unsigned long av_adler32_update(unsigned long adler, const uint8_t *buf,
+                                unsigned int len) av_pure;
+
+/**
+ * @}
+ */
+
+#endif /* AVUTIL_ADLER32_H */
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                /*
+ * copyright (c) 2007 Michael Niedermayer <michaelni@gmx.at>
+ *
+ * This file is part of FFmpeg.
+ *
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+#ifndef AVUTIL_AES_H
+#define AVUTIL_AES_H
+
+#include <stdint.h>
+
+#include "attributes.h"
+#include "version.h"
+
+/**
+ * @defgroup lavu_aes AES
+ * @ingroup lavu_crypto
+ * @{
+ */
+
+extern const int av_aes_size;
+
+struct AVAES;
+
+/**
+ * Allocate an AVAES context.
+ */
+struct AVAES *av_aes_alloc(void);
+
+/**
+ * Initialize an AVAES context.
+ * @param key_bits 128, 192 or 256
+ * @param decrypt 0 for encryption, 1 for decryption
+ */
+int av_aes_init(struct AVAES *a, const uint8_t *key, int key_bits, int decrypt);
+
+/**
+ * Encrypt or decrypt a buffer using a previously initialized context.
+ * @param count number of 16 byte blocks
+ * @param dst destination array, can be equal to src
+ * @param src source array, can be equal to dst
+ * @param iv initialization vector for CBC mode, if NULL then ECB will be used
+ * @param decrypt 0 for encryption, 1 for decryption
+ */
+void av_aes_crypt(struct AVAES *a, uint8_t *dst, const uint8_t *src, int count, uint8_t *iv, int decrypt);
+
+/**
+ * @}
+ */
+
+#endif /* AVUTIL_AES_H */
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      /*
+ * copyright (c) 2006 Michael Niedermayer <michaelni@gmx.at>
+ *
+ * This file is part of FFmpeg.
+ *
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+/**
+ * @file
+ * Macro definitions for various function/variable attributes
+ */
+
+#ifndef AVUTIL_ATTRIBUTES_H
+#define AVUTIL_ATTRIBUTES_H
+
+#ifdef __GNUC__
+#    define AV_GCC_VERSION_AT_LEAST(x,y) (__GNUC__ > x || __GNUC__ == x && __GNUC_MINOR__ >= y)
+#else
+#    define AV_GCC_VERSION_AT_LEAST(x,y) 0
+#endif
+
+#ifndef av_always_inline
+#if AV_GCC_VERSION_AT_LEAST(3,1)
+#    define av_always_inline __attribute__((always_inline)) inline
+#elif defined(_MSC_VER)
+#    define av_always_inline __forceinline
+#else
+#    define av_always_inline inline
+#endif
+#endif
+
+#ifndef av_extern_inline
+#if defined(__ICL) && __ICL >= 1210 || defined(__GNUC_STDC_INLINE__)
+#    define av_extern_inline extern inline
+#else
+#    define av_extern_inline inline
+#endif
+#endif
+
+#if AV_GCC_VERSION_AT_LEAST(3,1)
+#    define av_noinline __attribute__((noinline))
+#elif defined(_MSC_VER)
+#    define av_noinline __declspec(noinline)
+#else
+#    define av_noinline
+#endif
+
+#if AV_GCC_VERSION_AT_LEAST(3,1)
+#    define av_pure __attribute__((pure))
+#else
+#    define av_pure
+#endif
+
+#if AV_GCC_VERSION_AT_LEAST(2,6)
+#    define av_const __attribute__((const))
+#else
+#    define av_const
+#endif
+
+#if AV_GCC_VERSION_AT_LEAST(4,3)
+#    define av_cold __attribute__((cold))
+#else
+#    define av_cold
+#endif
+
+#if AV_GCC_VERSION_AT_LEAST(4,1) && !defined(__llvm__)
+#    define av_flatten __attribute__((flatten))
+#else
+#    define av_flatten
+#endif
+
+#if AV_GCC_VERSION_AT_LEAST(3,1)
+#    define attribute_deprecated __attribute__((deprecated))
+#elif defined(_MSC_VER)
+#    define attribute_deprecated __declspec(deprecated)
+#else
+#    define attribute_deprecated
+#endif
+
+/**
+ * Disable warnings about deprecated features
+ * This is useful for sections of code kept for backward compatibility and
+ * scheduled for removal.
+ */
+#ifndef AV_NOWARN_DEPRECATED
+#if AV_GCC_VERSION_AT_LEAST(4,6)
+#    define AV_NOWARN_DEPRECATED(code) \
+        _Pragma("GCC diagnostic push") \
+        _Pragma("GCC diagnostic ignored \"-Wdeprecated-declarations\"") \
+        code \
+        _Pragma("GCC diagnostic pop")
+#elif defined(_MSC_VER)
+#    define AV_NOWARN_DEPRECATED(code) \
+        __pragma(warning(push)) \
+        __pragma(warning(disable : 4996)) \
+        code; \
+        __pragma(warning(pop))
+#else
+#    define AV_NOWARN_DEPRECATED(code) code
+#endif
+#endif
+
+
+#if defined(__GNUC__)
+#    define av_unused __attribute__((unused))
+#else
+#    define av_unused
+#endif
+
+/**
+ * Mark a variable as used and prevent the compiler from optimizing it
+ * away.  This is useful for variables accessed only from inline
+ * assembler without the compiler being aware.
+ */
+#if AV_GCC_VERSION_AT_LEAST(3,1)
+#    define av_used __attribute__((used))
+#else
+#    define av_used
+#endif
+
+#if AV_GCC_VERSION_AT_LEAST(3,3)
+#   define av_alias __attribute__((may_alias))
+#else
+#   define av_alias
+#endif
+
+#if defined(__GNUC__) && !defined(__INTEL_COMPILER) && !defined(__clang__)
+#    define av_uninit(x) x=x
+#else
+#    define av_uninit(x) x
+#endif
+
+#ifdef __GNUC__
+#    define av_builtin_constant_p __builtin_constant_p
+#    define av_printf_format(fmtpos, attrpos) __attribute__((__format__(__printf__, fmtpos, attrpos)))
+#else
+#    define av_builtin_constant_p(x) 0
+#    define av_printf_format(fmtpos, attrpos)
+#endif
+
+#if AV_GCC_VERSION_AT_LEAST(2,5)
+#    define av_noreturn __attribute__((noreturn))
+#else
+#    define av_noreturn
+#endif
+
+#endif /* AVUTIL_ATTRIBUTES_H */
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          /*
+ * Audio FIFO
+ * Copyright (c) 2012 Justin Ruggles <justin.ruggles@gmail.com>
+ *
+ * This file is part of FFmpeg.
+ *
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+/**
+ * @file
+ * Audio FIFO Buffer
+ */
+
+#ifndef AVUTIL_AUDIO_FIFO_H
+#define AVUTIL_AUDIO_FIFO_H
+
+#include "avutil.h"
+#include "fifo.h"
+#include "samplefmt.h"
+
+/**
+ * @addtogroup lavu_audio
+ * @{
+ */
+
+/**
+ * Context for an Audio FIFO Buffer.
+ *
+ * - Operates at the sample level rather than the byte level.
+ * - Supports multiple channels with either planar or packed sample format.
+ * - Automatic reallocation when writing to a full buffer.
+ */
+typedef struct AVAudioFifo AVAudioFifo;
+
+/**
+ * Free an AVAudioFifo.
+ *
+ * @param af  AVAudioFifo to free
+ */
+void av_audio_fifo_free(AVAudioFifo *af);
+
+/**
+ * Allocate an AVAudioFifo.
+ *
+ * @param sample_fmt  sample format
+ * @param channels    number of channels
+ * @param nb_samples  initial allocation size, in samples
+ * @return            newly allocated AVAudioFifo, or NULL on error
+ */
+AVAudioFifo *av_audio_fifo_alloc(enum AVSampleFormat sample_fmt, int channels,
+                                 int nb_samples);
+
+/**
+ * Reallocate an AVAudioFifo.
+ *
+ * @param af          AVAudioFifo to reallocate
+ * @param nb_samples  new allocation size, in samples
+ * @return            0 if OK, or negative AVERROR code on failure
+ */
+int av_audio_fifo_realloc(AVAudioFifo *af, int nb_samples);
+
+/**
+ * Write data to an AVAudioFifo.
+ *
+ * The AVAudioFifo will be reallocated automatically if the available space
+ * is less than nb_samples.
+ *
+ * @see enum AVSampleFormat
+ * The documentation for AVSampleFormat describes the data layout.
+ *
+ * @param af          AVAudioFifo to write to
+ * @param data        audio data plane pointers
+ * @param nb_samples  number of samples to write
+ * @return            number of samples actually written, or negative AVERROR
+ *                    code on failure. If successful, the number of samples
+ *                    actually written will always be nb_samples.
+ */
+int av_audio_fifo_write(AVAudioFifo *af, void **data, int nb_samples);
+
+/**
+ * Read data from an AVAudioFifo.
+ *
+ * @see enum AVSampleFormat
+ * The documentation for AVSampleFormat describes the data layout.
+ *
+ * @param af          AVAudioFifo to read from
+ * @param data        audio data plane pointers
+ * @param nb_samples  number of samples to read
+ * @return            number of samples actually read, or negative AVERROR code
+ *                    on failure. The number of samples actually read will not
+ *                    be greater than nb_samples, and will only be less than
+ *                    nb_samples if av_audio_fifo_size is less than nb_samples.
+ */
+int av_audio_fifo_read(AVAudioFifo *af, void **data, int nb_samples);
+
+/**
+ * Drain data from an AVAudioFifo.
+ *
+ * Removes the data without reading it.
+ *
+ * @param af          AVAudioFifo to drain
+ * @param nb_samples  number of samples to drain
+ * @return            0 if OK, or negative AVERROR code on failure
+ */
+int av_audio_fifo_drain(AVAudioFifo *af, int nb_samples);
+
+/**
+ * Reset the AVAudioFifo buffer.
+ *
+ * This empties all data in the buffer.
+ *
+ * @param af  AVAudioFifo to reset
+ */
+void av_audio_fifo_reset(AVAudioFifo *af);
+
+/**
+ * Get the current number of samples in the AVAudioFifo available for reading.
+ *
+ * @param af  the AVAudioFifo to query
+ * @return    number of samples available for reading
+ */
+int av_audio_fifo_size(AVAudioFifo *af);
+
+/**
+ * Get the current number of samples in the AVAudioFifo available for writing.
+ *
+ * @param af  the AVAudioFifo to query
+ * @return    number of samples available for writing
+ */
+int av_audio_fifo_space(AVAudioFifo *af);
+
+/**
+ * @}
+ */
+
+#endif /* AVUTIL_AUDIO_FIFO_H */
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  /*
+ * copyright (c) 2010 Michael Niedermayer <michaelni@gmx.at>
+ *
+ * This file is part of FFmpeg.
+ *
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+/**
+ * @file
+ * simple assert() macros that are a bit more flexible than ISO C assert().
+ * @author Michael Niedermayer <michaelni@gmx.at>
+ */
+
+#ifndef AVUTIL_AVASSERT_H
+#define AVUTIL_AVASSERT_H
+
+#include <stdlib.h>
+#include "avutil.h"
+#include "log.h"
+
+/**
+ * assert() equivalent, that is always enabled.
+ */
+#define av_assert0(cond) do {                                           \
+    if (!(cond)) {                                                      \
+        av_log(NULL, AV_LOG_PANIC, "Assertion %s failed at %s:%d\n",    \
+               AV_STRINGIFY(cond), __FILE__, __LINE__);                 \
+        abort();                                                        \
+    }                                                                   \
+} while (0)
+
+
+/**
+ * assert() equivalent, that does not lie in speed critical code.
+ * These asserts() thus can be enabled without fearing speedloss.
+ */
+#if defined(ASSERT_LEVEL) && ASSERT_LEVEL > 0
+#define av_assert1(cond) av_assert0(cond)
+#else
+#define av_assert1(cond) ((void)0)
+#endif
+
+
+/**
+ * assert() equivalent, that does lie in speed critical code.
+ */
+#if defined(ASSERT_LEVEL) && ASSERT_LEVEL > 1
+#define av_assert2(cond) av_assert0(cond)
+#else
+#define av_assert2(cond) ((void)0)
+#endif
+
+#endif /* AVUTIL_AVASSERT_H */
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               INDX( 	 Î,Zg            (   ğ  è              Ò          B    h T     B    x©	Á‡Ò ê‹RÔ„ÒÑ÷	Á‡Òx©	Á‡Ò       0              	 a d l e r 3 2 . h     B    ` L     B    Ñ÷	Á‡Ò ê‹RÔ„Òø
+Á‡ÒÑ÷	Á‡Ò       *               a e s . h     B    p Z     B    &F
+Á‡Ò ê‹RÔ„ÒZn
+Á‡Ò&F
+Á‡Ò        †               a t t r i b u t e s . h       B    p ^     B    t”
+Á‡Ò ê‹RÔ„Ò
+Â
+Á‡Òt”
+Á‡ÒX       R                a u d i o c o n v e r t . h   B    p Z     B    Zn
+Á‡Ò ê‹RÔ„Òt”
+Á‡ÒZn
+Á‡Ò        >               a u d i o _ f i f o . h       B    h V     B    
+Â
+Á‡Ò ê‹RÔ„Òmê
+Á‡Ò
+Â
+Á‡Ò       A              
+ a v a s s e r t . h   B    h V     B    mê
+Á‡Ò ê‹RÔ„Ò¢7Á‡Òmê
+Á‡ÒØ       Ó               
+ a v c o n f i g . h   B    h V     B    ¢7Á‡Ò ê‹RÔ„Ò¸^Á‡Ò¢7Á‡Ò @      ¹0              
+ a v s t r i n g . h   B    h R     B    ¸^Á‡Ò ê‹RÔ„Òû…Á‡Ò¸^Á‡Ò 0      q!               a v u t i l . h       B    h R     B    %­Á‡Ò ê‹RÔ„Ò8ÔÁ‡Ò%­Á‡Ò                      b a s e 6 4 . h       B    h V     B    8ÔÁ‡Ò ê‹RÔ„ÒgûÁ‡Ò8ÔÁ‡Ò       		              
+ b l o w f i s h . h   B    h R     B    p)Á‡Ò ê‹RÔ„Ò¢PÁ‡Òp)Á‡Ò        5               b p r i n t . h       B    ` P     B    ¢PÁ‡Ò ê‹RÔ„ÒÕwÁ‡Ò¢PÁ‡Ò       U               b s w a p . h B    h R     B    ğÁ‡Ò ê‹RÔ„Ò*ÆÁ‡ÒğÁ‡Ò 0      ,&               b u f f e r . h       B    x b     B    *ÆÁ‡Ò ê‹RÔ„ÒEíÁ‡Ò*ÆÁ‡Ò 0      ƒ#               c h a n n e l _ l a y o u t . h       B    h R     B    EíÁ‡Ò ê‹RÔ„Ò€Á‡ÒEíÁ‡Ò @      ˜6               c o m m o n . h       B    ` L     B    ª;Á‡Ò ê‹RÔ„ÒÕbÁ‡Òª;Á‡Ò        x               c p u . h      B    ` L     B    ÕbÁ‡Ò ê‹RÔ„ÒŠÁ‡ÒÕbÁ‡Ò       ß
+               c r c . h     !B    ` N     B    ŠÁ‡Ò ê‹RÔ„Òv²Á‡ÒŠÁ‡Ò        }               d i c t . h                B    v²Á‡Ò ê‹RÔ„ÒUØÁ‡Òv²Á‡Ò       ^               d o w n m i x _ i n f o . h   #B    ` P     B    tÿÁ‡Ò ê‹RÔ„Òõ+Á‡ÒtÿÁ‡Ò        ™               e r r o r . h $B    ` N     B    õ+Á‡Ò ê‹RÔ„Ò$SÁ‡Òõ+Á‡Ò        ·               e v a l . h   %B    h X     B    $SÁ‡Ò ê‹RÔ„ÒjzÁ‡Ò$SÁ‡Ò€       €                f f v e r s i o n . h &B    ` N     B    ¡Á‡Ò ê‹RÔ„Ò¬ÈÁ‡Ò¡Á‡Ò        0               f i f o . h   'B    ` N    B    âïÁ‡Ò ê‹RÔ„ÒÁ‡ÒâïÁ‡Ò       j	               f i l e . h   (B    ` P     B    Á‡Ò ê‹RÔ„Ò$>Á‡ÒÁ‡Ò `      ûY               f r a m e . h )B    ` N     B    $>Á‡Ò ê‹RÔ„ÒZeÁ‡Ò$>Á‡Ò       6               h m a c . h   *B    h V     B    ¥‘Á‡Ò ê‹RÔ„ÒÓ¸Á‡Ò¥‘Á‡Ò        ¤              
+ i m g u t i l s . h   +B    h V     B    Ó¸Á‡Ò ê‹RÔ„ÒşßÁ‡ÒÓ¸Á‡Ò       ¾              
+ i n t f l o a t . h   ,B    € j     B    şßÁ‡  ê‹RÔ„Ò)Á‡ÒşßÁ‡Ò                      i n t f l o a t _ r e a d w r i t e . h       -B    p ^     B    )Á‡Ò ê‹RÔ„ÒS.Á‡Ò)Á‡Ò P      =F               i n t r e a d w r i t e . h   .B    ` L     B    ~UÁ‡Ò ê‹RÔ„Ò©|Á‡Ò~UÁ‡Ò       Â               l f g . h     /B    ` L     B    ©|Á‡Ò ê‹RÔ„ÒÓ£Á‡Ò©|Á‡Ò 0      #'               l o g . h     0B    ` L     B    Ó£Á‡Ò ê‹RÔ„ÒËÁ‡ÒÓ£Á‡Ò                       l z o . h     1B    h R    B    ËÁ‡Ò ê‹RÔ„Ò­ùÁ‡ÒËÁ‡Ò       ³               m a c r o s . h       2B    p \     B    Û Á‡Ò ê‹RÔ„ÒHÁ‡ÒÛ Á‡Ò        A               m a t h e m a t i c s . h     3B    ` L     B    HÁ‡Ò ê‹RÔ„Ò5oÁ‡ÒHÁ‡Ò       ©               m d 5 . h     4B    ` L     B    c–Á‡Ò ê‹RÔ„Ò½Á‡Òc–Á‡Ò @      8               m e m . h     5B    h T     B    ½Á‡Ò ê‹RÔ„ÒßÁ‡Ò½Á‡Ò       Æ              	 m u r m u r 3 . h                  /*
+ * Copyright (c) 2007 Mans Rullgard
+ *
+ * This file is part of FFmpeg.
+ *
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+#ifndef AVUTIL_AVSTRING_H
+#define AVUTIL_AVSTRING_H
+
+#include <stddef.h>
+#include <stdint.h>
+#include "attributes.h"
+
+/**
+ * @addtogroup lavu_string
+ * @{
+ */
+
+/**
+ * Return non-zero if pfx is a prefix of str. If it is, *ptr is set to
+ * the address of the first character in str after the prefix.
+ *
+ * @param str input string
+ * @param pfx prefix to test
+ * @param ptr updated if the prefix is matched inside str
+ * @return non-zero if the prefix matches, zero otherwise
+ */
+int av_strstart(const char *str, const char *pfx, const char **ptr);
+
+/**
+ * Return non-zero if pfx is a prefix of str independent of case. If
+ * it is, *ptr is set to the address of the first character in str
+ * after the prefix.
+ *
+ * @param str input string
+ * @param pfx prefix to test
+ * @param ptr updated if the prefix is matched inside str
+ * @return non-zero if the prefix matches, zero otherwise
+ */
+int av_stristart(const char *str, const char *pfx, const char **ptr);
+
+/**
+ * Locate the first case-independent occurrence in the string haystack
+ * of the string needle.  A zero-length string needle is considered to
+ * match at the start of haystack.
+ *
+ * This function is a case-insensitive version of the standard strstr().
+ *
+ * @param haystack string to search in
+ * @param needle   string to search for
+ * @return         pointer to the located match within haystack
+ *                 or a null pointer if no match
+ */
+char *av_stristr(const char *haystack, const char *needle);
+
+/**
+ * Locate the first occurrence of the string needle in the string haystack
+ * where not more than hay_length characters are searched. A zero-length
+ * string needle is considered to match at the start of haystack.
+ *
+ * This function is a length-limited version of the standard strstr().
+ *
+ * @param haystack   string to search in
+ * @param needle     string to search for
+ * @param hay_length length of string to search in
+ * @return           pointer to the located match within haystack
+ *                   or a null pointer if no match
+ */
+char *av_strnstr(const char *haystack, const char *needle, size_t hay_length);
+
+/**
+ * Copy the string src to dst, but no more than size - 1 bytes, and
+ * null-terminate dst.
+ *
+ * This function is the same as BSD strlcpy().
+ *
+ * @param dst destination buffer
+ * @param src source string
+ * @param size size of destination buffer
+ * @return the length of src
+ *
+ * @warning since the return value is the length of src, src absolutely
+ * _must_ be a properly 0-terminated string, otherwise this will read beyond
+ * the end of the buffer and possibly crash.
+ */
+size_t av_strlcpy(char *dst, const char *src, size_t size);
+
+/**
+ * Append the string src to the string dst, but to a total length of
+ * no more than size - 1 bytes, and null-terminate dst.
+ *
+ * This function is similar to BSD strlcat(), but differs when
+ * size <= strlen(dst).
+ *
+ * @param dst destination buffer
+ * @param src source string
+ * @param size size of destination buffer
+ * @return the total length of src and dst
+ *
+ * @warning since the return value use the length of src and dst, these
+ * absolutely _must_ be a properly 0-terminated strings, otherwise this
+ * will read beyond the end of the buffer and possibly crash.
+ */
+size_t av_strlcat(char *dst, const char *src, size_t size);
+
+/**
+ * Append output to a string, according to a format. Never write out of
+ * the destination buffer, and always put a terminating 0 within
+ * the buffer.
+ * @param dst destination buffer (string to which the output is
+ *  appended)
+ * @param size total size of the destination buffer
+ * @param fmt printf-compatible format string, specifying how the
+ *  following parameters are used
+ * @return the length of the string that would have been generated
+ *  if enough space had been available
+ */
+size_t av_strlcatf(char *dst, size_t size, const char *fmt, ...) av_printf_format(3, 4);
+
+/**
+ * Get the count of continuous non zero chars starting from the beginning.
+ *
+ * @param len maximum number of characters to check in the string, that
+ *            is the maximum value which is returned by the function
+ */
+static inline size_t av_strnlen(const char *s, size_t len)
+{
+    size_t i;
+    for (i = 0; i < len && s[i]; i++)
+        ;
+    return i;
+}
+
+/**
+ * Print arguments following specified format into a large enough auto
+ * allocated buffer. It is similar to GNU asprintf().
+ * @param fmt printf-compatible format string, specifying how the
+ *            following parameters are used.
+ * @return the allocated string
+ * @note You have to free the string yourself with av_free().
+ */
+char *av_asprintf(const char *fmt, ...) av_printf_format(1, 2);
+
+/**
+ * Convert a number to a av_malloced string.
+ */
+char *av_d2str(double d);
+
+/**
+ * Unescape the given string until a non escaped terminating char,
+ * and return the token corresponding to the unescaped string.
+ *
+ * The normal \ and ' escaping is supported. Leading and trailing
+ * whitespaces are removed, unless they are escaped with '\' or are
+ * enclosed between ''.
+ *
+ * @param buf the buffer to parse, buf will be updated to point to the
+ * terminating char
+ * @param term a 0-terminated list of terminating chars
+ * @return the malloced unescaped string, which must be av_freed by
+ * the user, NULL in case of allocation failure
+ */
+char *av_get_token(const char **buf, const char *term);
+
+/**
+ * Split the string into several tokens which can be accessed by
+ * successive calls to av_strtok().
+ *
+ * A token is defined as a sequence of characters not belonging to the
+ * set specified in delim.
+ *
+ * On the first call to av_strtok(), s should point to the string to
+ * parse, and the value of saveptr is ignored. In subsequent calls, s
+ * should be NULL, and saveptr should be unchanged since the previous
+ * call.
+ *
+ * This function is similar to strtok_r() defined in POSIX.1.
+ *
+ * @param s the string to parse, may be NULL
+ * @param delim 0-terminated list of token delimiters, must be non-NULL
+ * @param saveptr user-provided pointer which points to stored
+ * information necessary for av_strtok() to continue scanning the same
+ * string. saveptr is updated to point to the next character after the
+ * first delimiter found, or to NULL if the string was terminated
+ * @return the found token, or NULL when no token is found
+ */
+char *av_strtok(char *s, const char *delim, char **saveptr);
+
+/**
+ * Locale-independent conversion of ASCII isdigit.
+ */
+int av_isdigit(int c);
+
+/**
+ * Locale-independent conversion of ASCII isgraph.
+ */
+int av_isgraph(int c);
+
+/**
+ * Locale-independent conversion of ASCII isspace.
+ */
+int av_isspace(int c);
+
+/**
+ * Locale-independent conversion of ASCII characters to uppercase.
+ */
+static inline int av_toupper(int c)
+{
+    if (c >= 'a' && c <= 'z')
+        c ^= 0x20;
+    return c;
+}
+
+/**
+ * Locale-independent conversion of ASCII characters to lowercase.
+ */
+static inline int av_tolower(int c)
+{
+    if (c >= 'A' && c <= 'Z')
+        c ^= 0x20;
+    return c;
+}
+
+/**
+ * Locale-independent conversion of ASCII isxdigit.
+ */
+int av_isxdigit(int c);
+
+/**
+ * Locale-independent case-insensitive compare.
+ * @note This means only ASCII-range characters are case-insensitive
+ */
+int av_strcasecmp(const char *a, const char *b);
+
+/**
+ * Locale-independent case-insensitive compare.
+ * @note This means only ASCII-range characters are case-insensitive
+ */
+int av_strncasecmp(const char *a, const char *b, size_t n);
+
+
+/**
+ * Thread safe basename.
+ * @param path the path, on DOS both \ and / are considered separators.
+ * @return pointer to the basename substring.
+ */
+const char *av_basename(const char *path);
+
+/**
+ * Thread safe dirname.
+ * @param path the path, on DOS both \ and / are considered separators.
+ * @return the path with the separator replaced by the string terminator or ".".
+ * @note the function may change the input string.
+ */
+const char *av_dirname(char *path);
+
+enum AVEscapeMode {
+    AV_ESCAPE_MODE_AUTO,      ///< Use auto-selected escaping mode.
+    AV_ESCAPE_MODE_BACKSLASH, ///< Use backslash escaping.
+    AV_ESCAPE_MODE_QUOTE,     ///< Use single-quote escaping.
+};
+
+/**
+ * Consider spaces special and escape them even in the middle of the
+ * string.
+ *
+ * This is equivalent to adding the whitespace characters to the special
+ * characters lists, except it is guaranteed to use the exact same list
+ * of whitespace characters as the rest of libavutil.
+ */
+#define AV_ESCAPE_FLAG_WHITESPACE 0x01
+
+/**
+ * Escape only specified special characters.
+ * Without this flag, escape also any characters that may be considered
+ * special by av_get_token(), such as the single quote.
+ */
+#define AV_ESCAPE_FLAG_STRICT 0x02
+
+/**
+ * Escape string in src, and put the escaped string in an allocated
+ * string in *dst, which must be freed with av_free().
+ *
+ * @param dst           pointer where an allocated string is put
+ * @param src           string to escape, must be non-NULL
+ * @param special_chars string containing the special characters which
+ *                      need to be escaped, can be NULL
+ * @param mode          escape mode to employ, see AV_ESCAPE_MODE_* macros.
+ *                      Any unknown value for mode will be considered equivalent to
+ *                      AV_ESCAPE_MODE_BACKSLASH, but this behaviour can change without
+ *                      notice.
+ * @param flags         flags which control how to escape, see AV_ESCAPE_FLAG_ macros
+ * @return the length of the allocated string, or a negative error code in case of error
+ * @see av_bprint_escape()
+ */
+int av_escape(char **dst, const char *src, const char *special_chars,
+              enum AVEscapeMode mode, int flags);
+
+#define AV_UTF8_FLAG_ACCEPT_INVALID_BIG_CODES          1 ///< accept codepoints over 0x10FFFF
+#define AV_UTF8_FLAG_ACCEPT_NON_CHARACTERS             2 ///< accept non-characters - 0xFFFE and 0xFFFF
+#define AV_UTF8_FLAG_ACCEPT_SURROGATES                 4 ///< accept UTF-16 surrogates codes
+#define AV_UTF8_FLAG_EXCLUDE_XML_INVALID_CONTROL_CODES 8 ///< exclude control codes not accepted by XML
+
+#define AV_UTF8_FLAG_ACCEPT_ALL \
+    AV_UTF8_FLAG_ACCEPT_INVALID_BIG_CODES|AV_UTF8_FLAG_ACCEPT_NON_CHARACTERS|AV_UTF8_FLAG_ACCEPT_SURROGATES
+
+/**
+ * Read and decode a single UTF-8 code point (character) from the
+ * buffer in *buf, and update *buf to point to the next byte to
+ * decode.
+ *
+ * In case of an invalid byte sequence, the pointer will be updated to
+ * the next byte after the invalid sequence and the function will
+ * return an error code.
+ *
+ * Depending on the specified flags, the function will also fail in
+ * case the decoded code point does not belong to a valid range.
+ *
+ * @note For speed-relevant code a carefully implemented use of
+ * GET_UTF8() may be preferred.
+ *
+ * @param codep   pointer used to return the parsed code in case of success.
+ *                The value in *codep is set even in case the range check fails.
+ * @param bufp    pointer to the address the first byte of the sequence
+ *                to decode, updated by the function to point to the
+ *                byte next after the decoded sequence
+ * @param buf_end pointer to the end of the buffer, points to the next
+ *                byte past the last in the buffer. This is used to
+ *                avoid buffer overreads (in case of an unfinished
+ *                UTF-8 sequence towards the end of the buffer).
+ * @param flags   a collection of AV_UTF8_FLAG_* flags
+ * @return >= 0 in case a sequence was successfully read, a negative
+ * value in case of invalid sequence
+ */
+int av_utf8_decode(int32_t *codep, const uint8_t **bufp, const uint8_t *buf_end,
+                   unsigned int flags);
+
+/**
+ * @}
+ */
+
+#endif /* AVUTIL_AVSTRING_H */
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       /*
+ * copyright (c) 2006 Michael Niedermayer <michaelni@gmx.at>
+ *
+ * This file is part of FFmpeg.
+ *
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+#ifndef AVUTIL_AVUTIL_H
+#define AVUTIL_AVUTIL_H
+
+/**
+ * @file
+ * external API header
+ */
+
+/**
+ * @mainpage
+ *
+ * @section ffmpeg_intro Introduction
+ *
+ * This document describes the usage of the different libraries
+ * provided by FFmpeg.
+ *
+ * @li @ref libavc "libavcodec" encoding/decoding library
+ * @li @ref lavfi "libavfilter" graph-based frame editing library
+ * @li @ref libavf "libavformat" I/O and muxing/demuxing library
+ * @li @ref lavd "libavdevice" special devices muxing/demuxing library
+ * @li @ref lavu "libavutil" common utility library
+ * @li @ref lswr "libswresample" audio resampling, format conversion and mixing
+ * @li @ref lpp  "libpostproc" post processing library
+ * @li @ref libsws "libswscale" color conversion and scaling library
+ *
+ * @section ffmpeg_versioning Versioning and compatibility
+ *
+ * Each of the FFmpeg libraries contains a version.h header, which defines a
+ * major, minor and micro version number with the
+ * <em>LIBRARYNAME_VERSION_{MAJOR,MINOR,MICRO}</em> macros. The major version
+ * number is incremented with backward incompatible changes - e.g. removing
+ * parts of the public API, reordering public struct members, etc. The minor
+ * version number is incremented for backward compatible API changes or major
+ * new features - e.g. adding a new public function or a new decoder. The micro
+ * version number is incremented for smaller changes that a calling program
+ * might still want to check for - e.g. changing behavior in a previously
+ * unspecified situation.
+ *
+ * FFmpeg guarantees backward API and ABI compatibility for each library as long
+ * as its major version number is unchanged. This means that no public symbols
+ * will be removed or renamed. Types and names of the public struct members and
+ * values of public macros and enums will remain the same (unless they were
+ * explicitly declared as not part of the public API). Documented behavior will
+ * not change.
+ *
+ * In other words, any correct program that works with a given FFmpeg snapshot
+ * should work just as well without any changes with any later snapshot with the
+ * same major versions. This applies to both rebuilding the program against new
+ * FFmpeg versions or to replacing the dynamic FFmpeg libraries that a program
+ * links against.
+ *
+ * However, new public symbols may be added and new members may be appended to
+ * public structs whose size is not part of public ABI (most public structs in
+ * FFmpeg). New macros and enum values may be added. Behavior in undocumented
+ * situations may change slightly (and be documented). All those are accompanied
+ * by an entry in doc/APIchanges and incrementing either the minor or micro
+ * version number.
+ */
+
+/**
+ * @defgroup lavu Common utility functions
+ *
+ * @brief
+ * libavutil contains the code shared across all the other FFmpeg
+ * libraries
+ *
+ * @note In order to use the functions provided by avutil you must include
+ * the specific header.
+ *
+ * @{
+ *
+ * @defgroup lavu_crypto Crypto and Hashing
+ *
+ * @{
+ * @}
+ *
+ * @defgroup lavu_math Maths
+ * @{
+ *
+ * @}
+ *
+ * @defgroup lavu_string String Manipulation
+ *
+ * @{
+ *
+ * @}
+ *
+ * @defgroup lavu_mem Memory Management
+ *
+ * @{
+ *
+ * @}
+ *
+ * @defgroup lavu_data Data Structures
+ * @{
+ *
+ * @}
+ *
+ * @defgroup lavu_audio Audio related
+ *
+ * @{
+ *
+ * @}
+ *
+ * @defgroup lavu_error Error Codes
+ *
+ * @{
+ *
+ * @}
+ *
+ * @defgroup lavu_log Logging Facility
+ *
+ * @{
+ *
+ * @}
+ *
+ * @defgroup lavu_misc Other
+ *
+ * @{
+ *
+ * @defgroup lavu_internal Internal
+ *
+ * Not exported functions, for internal usage only
+ *
+ * @{
+ *
+ * @}
+ *
+ * @defgroup preproc_misc Preprocessor String Macros
+ *
+ * @{
+ *
+ * @}
+ */
+
+
+/**
+ * @addtogroup lavu_ver
+ * @{
+ */
+
+/**
+ * Return the LIBAVUTIL_VERSION_INT constant.
+ */
+unsigned avutil_version(void);
+
+/**
+ * Return the libavutil build-time configuration.
+ */
+const char *avutil_configuration(void);
+
+/**
+ * Return the libavutil license.
+ */
+const char *avutil_license(void);
+
+/**
+ * @}
+ */
+
+/**
+ * @addtogroup lavu_media Media Type
+ * @brief Media Type
+ */
+
+enum AVMediaType {
+    AVMEDIA_TYPE_UNKNOWN = -1,  ///< Usually treated as AVMEDIA_TYPE_DATA
+    AVMEDIA_TYPE_VIDEO,
+    AVMEDIA_TYPE_AUDIO,
+    AVMEDIA_TYPE_DATA,          ///< Opaque data information usually continuous
+    AVMEDIA_TYPE_SUBTITLE,
+    AVMEDIA_TYPE_ATTACHMENT,    ///< Opaque data information usually sparse
+    AVMEDIA_TYPE_NB
+};
+
+/**
+ * Return a string describing the media_type enum, NULL if media_type
+ * is unknown.
+ */
+const char *av_get_media_type_string(enum AVMediaType media_type);
+
+/**
+ * @defgroup lavu_const Constants
+ * @{
+ *
+ * @defgroup lavu_enc Encoding specific
+ *
+ * @note those definition should move to avcodec
+ * @{
+ */
+
+#define FF_LAMBDA_SHIFT 7
+#define FF_LAMBDA_SCALE (1<<FF_LAMBDA_SHIFT)
+#define FF_QP2LAMBDA 118 ///< factor to convert from H.263 QP to lambda
+#define FF_LAMBDA_MAX (256*128-1)
+
+#define FF_QUALITY_SCALE FF_LAMBDA_SCALE //FIXME maybe remove
+
+/**
+ * @}
+ * @defgroup lavu_time Timestamp specific
+ *
+ * FFmpeg internal timebase and timestamp definitions
+ *
+ * @{
+ */
+
+/**
+ * @brief Undefined timestamp value
+ *
+ * Usually reported by demuxer that work on containers that do not provide
+ * either pts or dts.
+ */
+
+#define AV_NOPTS_VALUE          ((int64_t)UINT64_C(0x8000000000000000))
+
+/**
+ * Internal time base represented as integer
+ */
+
+#define AV_TIME_BASE            1000000
+
+/**
+ * Internal time base represented as fractional value
+ */
+
+#define AV_TIME_BASE_Q          (AVRational){1, AV_TIME_BASE}
+
+/**
+ * @}
+ * @}
+ * @defgroup lavu_picture Image related
+ *
+ * AVPicture types, pixel formats and basic image planes manipulation.
+ *
+ * @{
+ */
+
+enum AVPictureType {
+    AV_PICTURE_TYPE_NONE = 0, ///< Undefined
+    AV_PICTURE_TYPE_I,     ///< Intra
+    AV_PICTURE_TYPE_P,     ///< Predicted
+    AV_PICTURE_TYPE_B,     ///< Bi-dir predicted
+    AV_PICTURE_TYPE_S,     ///< S(GMC)-VOP MPEG4
+    AV_PICTURE_TYPE_SI,    ///< Switching Intra
+    AV_PICTURE_TYPE_SP,    ///< Switching Predicted
+    AV_PICTURE_TYPE_BI,    ///< BI type
+};
+
+/**
+ * Return a single letter to describe the given picture type
+ * pict_type.
+ *
+ * @param[in] pict_type the picture type @return a single character
+ * representing the picture type, '?' if pict_type is unknown
+ */
+char av_get_picture_type_char(enum AVPictureType pict_type);
+
+/**
+ * @}
+ */
+
+#include "common.h"
+#include "error.h"
+#include "rational.h"
+#include "version.h"
+#include "macros.h"
+#include "mathematics.h"
+#include "log.h"
+#include "pixfmt.h"
+
+/**
+ * Return x default pointer in case p is NULL.
+ */
+static inline void *av_x_if_null(const void *p, const void *x)
+{
+    return (void *)(intptr_t)(p ? p : x);
+}
+
+/**
+ * Compute the length of an integer list.
+ *
+ * @param elsize  size in bytes of each list element (only 1, 2, 4 or 8)
+ * @param term    list terminator (usually 0 or -1)
+ * @param list    pointer to the list
+ * @return  length of the list, in elements, not counting the terminator
+ */
+unsigned av_int_list_length_for_size(unsigned elsize,
+                                     const void *list, uint64_t term) av_pure;
+
+/**
+ * Compute the length of an integer list.
+ *
+ * @param term  list terminator (usually 0 or -1)
+ * @param list  pointer to the list
+ * @return  length of the list, in elements, not counting the terminator
+ */
+#define av_int_list_length(list, term) \
+    av_int_list_length_for_size(sizeof(*(list)), list, term)
+
+/**
+ * Open a file using a UTF-8 filename.
+ * The API of this function matches POSIX fopen(), errors are returned through
+ * errno.
+ */
+FILE *av_fopen_utf8(const char *path, const char *mode);
+
+/**
+ * Return the fractional representation of the internal time base.
+ */
+AVRational av_get_time_base_q(void);
+
+/**
+ * @}
+ * @}
+ */
+
+#endif /* AVUTIL_AVUTIL_H */
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               /*
+ * Copyright (c) 2006 Ryan Martell. (rdm4@martellventures.com)
+ *
+ * This file is part of FFmpeg.
+ *
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+#ifndef AVUTIL_BASE64_H
+#define AVUTIL_BASE64_H
+
+#include <stdint.h>
+
+/**
+ * @defgroup lavu_base64 Base64
+ * @ingroup lavu_crypto
+ * @{
+ */
+
+
+/**
+ * Decode a base64-encoded string.
+ *
+ * @param out      buffer for decoded data
+ * @param in       null-terminated input string
+ * @param out_size size in bytes of the out buffer, must be at
+ *                 least 3/4 of the length of in
+ * @return         number of bytes written, or a negative value in case of
+ *                 invalid input
+ */
+int av_base64_decode(uint8_t *out, const char *in, int out_size);
+
+/**
+ * Encode data to base64 and null-terminate.
+ *
+ * @param out      buffer for encoded data
+ * @param out_size size in bytes of the out buffer (including the
+ *                 null terminator), must be at least AV_BASE64_SIZE(in_size)
+ * @param in       input buffer containing the data to encode
+ * @param in_size  size in bytes of the in buffer
+ * @return         out or NULL in case of error
+ */
+char *av_base64_encode(char *out, int out_size, const uint8_t *in, int in_size);
+
+/**
+ * Calculate the output size needed to base64-encode x bytes to a
+ * null-terminated string.
+ */
+#define AV_BASE64_SIZE(x)  (((x)+2) / 3 * 4 + 1)
+
+ /**
+  * @}
+  */
+
+#endif /* AVUTIL_BASE64_H */
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 /*
+ * Blowfish algorithm
+ * Copyright (c) 2012 Samuel Pitoiset
+ *
+ * This file is part of FFmpeg.
+ *
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+#ifndef AVUTIL_BLOWFISH_H
+#define AVUTIL_BLOWFISH_H
+
+#include <stdint.h>
+
+/**
+ * @defgroup lavu_blowfish Blowfish
+ * @ingroup lavu_crypto
+ * @{
+ */
+
+#define AV_BF_ROUNDS 16
+
+typedef struct AVBlowfish {
+    uint32_t p[AV_BF_ROUNDS + 2];
+    uint32_t s[4][256];
+} AVBlowfish;
+
+/**
+ * Initialize an AVBlowfish context.
+ *
+ * @param ctx an AVBlowfish context
+ * @param key a key
+ * @param key_len length of the key
+ */
+void av_blowfish_init(struct AVBlowfish *ctx, const uint8_t *key, int key_len);
+
+/**
+ * Encrypt or decrypt a buffer using a previously initialized context.
+ *
+ * @param ctx an AVBlowfish context
+ * @param xl left four bytes halves of input to be encrypted
+ * @param xr right four bytes halves of input to be encrypted
+ * @param decrypt 0 for encryption, 1 for decryption
+ */
+void av_blowfish_crypt_ecb(struct AVBlowfish *ctx, uint32_t *xl, uint32_t *xr,
+                           int decrypt);
+
+/**
+ * Encrypt or decrypt a buffer using a previously initialized context.
+ *
+ * @param ctx an AVBlowfish context
+ * @param dst destination array, can be equal to src
+ * @param src source array, can be equal to dst
+ * @param count number of 8 byte blocks
+ * @param iv initialization vector for CBC mode, if NULL ECB will be used
+ * @param decrypt 0 for encryption, 1 for decryption
+ */
+void av_blowfish_crypt(struct AVBlowfish *ctx, uint8_t *dst, const uint8_t *src,
+                       int count, uint8_t *iv, int decrypt);
+
+/**
+ * @}
+ */
+
+#endif /* AVUTIL_BLOWFISH_H */
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       /*
+ * Copyright (c) 2012 Nicolas George
+ *
+ * This file is part of FFmpeg.
+ *
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+#ifndef AVUTIL_BPRINT_H
+#define AVUTIL_BPRINT_H
+
+#include <stdarg.h>
+
+#include "attributes.h"
+#include "avstring.h"
+
+/**
+ * Define a structure with extra padding to a fixed size
+ * This helps ensuring binary compatibility with future versions.
+ */
+#define FF_PAD_STRUCTURE(size, ...) \
+    __VA_ARGS__ \
+    char reserved_padding[size - sizeof(struct { __VA_ARGS__ })];
+
+/**
+ * Buffer to print data progressively
+ *
+ * The string buffer grows as necessary and is always 0-terminated.
+ * The content of the string is never accessed, and thus is
+ * encoding-agnostic and can even hold binary data.
+ *
+ * Small buffers are kept in the structure itself, and thus require no
+ * memory allocation at all (unless the contents of the buffer is needed
+ * after the structure goes out of scope). This is almost as lightweight as
+ * declaring a local "char buf[512]".
+ *
+ * The length of the string can go beyond the allocated size: the buffer is
+ * then truncated, but the functions still keep account of the actual total
+ * length.
+ *
+ * In other words, buf->len can be greater than buf->size and records the
+ * total length of what would have been to the buffer if there had been
+ * enough memory.
+ *
+ * Append operations do not need to be tested for failure: if a memory
+ * allocation fails, data stop being appended to the buffer, but the length
+ * is still updated. This situation can be tested with
+ * av_bprint_is_complete().
+ *
+ * The size_max field determines several possible behaviours:
+ *
+ * size_max = -1 (= UINT_MAX) or any large value will let the buffer be
+ * reallocated as necessary, with an amortized linear cost.
+ *
+ * size_max = 0 prevents writing anything to the buffer: only the total
+ * length is computed. The write operations can then possibly be repeated in
+ * a buffer with exactly the necessary size
+ * (using size_init = size_max = len + 1).
+ *
+ * size_max = 1 is automatically replaced by the exact size available in the
+ * structure itself, thus ensuring no dynamic memory allocation. The
+ * internal buffer is large enough to hold a reasonable paragraph of text,
+ * such as the current paragraph.
+ */
+typedef struct AVBPrint {
+    FF_PAD_STRUCTURE(1024,
+    char *str;         /**< string so far */
+    unsigned len;      /**< length so far */
+    unsigned size;     /**< allocated memory */
+    unsigned size_max; /**< maximum allocated memory */
+    char reserved_internal_buffer[1];
+    )
+} AVBPrint;
+
+/**
+ * Convenience macros for special values for av_bprint_init() size_max
+ * parameter.
+ */
+#define AV_BPRINT_SIZE_UNLIMITED  ((unsigned)-1)
+#define AV_BPRINT_SIZE_AUTOMATIC  1
+#define AV_BPRINT_SIZE_COUNT_ONLY 0
+
+/**
+ * Init a print buffer.
+ *
+ * @param buf        buffer to init
+ * @param size_init  initial size (including the final 0)
+ * @param size_max   maximum size;
+ *                   0 means do not write anything, just count the length;
+ *                   1 is replaced by the maximum value for automatic storage;
+ *                   any large value means that the internal buffer will be
+ *                   reallocated as needed up to that limit; -1 is converted to
+ *                   UINT_MAX, the largest limit possible.
+ *                   Check also AV_BPRINT_SIZE_* macros.
+ */
+void av_bprint_init(AVBPrint *buf, unsigned size_init, unsigned size_max);
+
+/**
+ * Init a print buffer using a pre-existing buffer.
+ *
+ * The buffer will not be reallocated.
+ *
+ * @param buf     buffer structure to init
+ * @param buffer  byte buffer to use for the string data
+ * @param size    size of buffer
+ */
+void av_bprint_init_for_buffer(AVBPrint *buf, char *buffer, unsigned size);
+
+/**
+ * Append a formatted string to a print buffer.
+ */
+void av_bprintf(AVBPrint *buf, const char *fmt, ...) av_printf_format(2, 3);
+
+/**
+ * Append a formatted string to a print buffer.
+ */
+void av_vbprintf(AVBPrint *buf, const char *fmt, va_list vl_arg);
+
+/**
+ * Append char c n times to a print buffer.
+ */
+void av_bprint_chars(AVBPrint *buf, char c, unsigned n);
+
+/**
+ * Append data to a print buffer.
+ *
+ * param buf  bprint buffer to use
+ * param data pointer to data
+ * param size size of data
+ */
+void av_bprint_append_data(AVBPrint *buf, const char *data, unsigned size);
+
+struct tm;
+/**
+ * Append a formatted date and time to a print buffer.
+ *
+ * param buf  bprint buffer to use
+ * param fmt  date and time format string, see strftime()
+ * param tm   broken-down time structure to translate
+ *
+ * @note due to poor design of the standard strftime function, it may
+ * produce poor results if the format string expands to a very long text and
+ * the bprint buffer is near the limit stated by the size_max option.
+ */
+void av_bprint_strftime(AVBPrint *buf, const char *fmt, const struct tm *tm);
+
+/**
+ * Allocate bytes in the buffer for external use.
+ *
+ * @param[in]  buf          buffer structure
+ * @param[in]  size         required size
+ * @param[out] mem          pointer to the memory area
+ * @param[out] actual_size  size of the memory area after allocation;
+ *                          can be larger or smaller than size
+ */
+void av_bprint_get_buffer(AVBPrint *buf, unsigned size,
+                          unsigned char **mem, unsigned *actual_size);
+
+/**
+ * Reset the string to "" but keep internal allocated data.
+ */
+void av_bprint_clear(AVBPrint *buf);
+
+/**
+ * Test if the print buffer is complete (not truncated).
+ *
+ * It may have been truncated due to a memory allocation failure
+ * or the size_max limit (compare size and size_max if necessary).
+ */
+static inline int av_bprint_is_complete(AVBPrint *buf)
+{
+    return buf->len < buf->size;
+}
+
+/**
+ * Finalize a print buffer.
+ *
+ * The print buffer can no longer be used afterwards,
+ * but the len and size fields are still valid.
+ *
+ * @arg[out] ret_str  if not NULL, used to return a permanent copy of the
+ *                    buffer contents, or NULL if memory allocation fails;
+ *                    if NULL, the buffer is discarded and freed
+ * @return  0 for success or error code (probably AVERROR(ENOMEM))
+ */
+int av_bprint_finalize(AVBPrint *buf, char **ret_str);
+
+/**
+ * Escape the content in src and append it to dstbuf.
+ *
+ * @param dstbuf        already inited destination bprint buffer
+ * @param src           string containing the text to escape
+ * @param special_chars string containing the special characters which
+ *                      need to be escaped, can be NULL
+ * @param mode          escape mode to employ, see AV_ESCAPE_MODE_* macros.
+ *                      Any unknown value for mode will be considered equivalent to
+ *                      AV_ESCAPE_MODE_BACKSLASH, but this behaviour can change without
+ *                      notice.
+ * @param flags         flags which control how to escape, see AV_ESCAPE_FLAG_* macros
+ */
+void av_bprint_escape(AVBPrint *dstbuf, const char *src, const char *special_chars,
+                      enum AVEscapeMode mode, int flags);
+
+#endif /* AVUTIL_BPRINT_H */
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                           /*
+ * copyright (c) 2006 Michael Niedermayer <michaelni@gmx.at>
+ *
+ * This file is part of FFmpeg.
+ *
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+/**
+ * @file
+ * byte swapping routines
+ */
+
+#ifndef AVUTIL_BSWAP_H
+#define AVUTIL_BSWAP_H
+
+#include <stdint.h>
+#include "libavutil/avconfig.h"
+#include "attributes.h"
+
+#ifdef HAVE_AV_CONFIG_H
+
+#include "config.h"
+
+#if   ARCH_AARCH64
+#   include "aarch64/bswap.h"
+#elif ARCH_ARM
+#   include "arm/bswap.h"
+#elif ARCH_AVR32
+#   include "avr32/bswap.h"
+#elif ARCH_BFIN
+#   include "bfin/bswap.h"
+#elif ARCH_SH4
+#   include "sh4/bswap.h"
+#elif ARCH_X86
+#   include "x86/bswap.h"
+#endif
+
+#endif /* HAVE_AV_CONFIG_H */
+
+#define AV_BSWAP16C(x) (((x) << 8 & 0xff00)  | ((x) >> 8 & 0x00ff))
+#define AV_BSWAP32C(x) (AV_BSWAP16C(x) << 16 | AV_BSWAP16C((x) >> 16))
+#define AV_BSWAP64C(x) (AV_BSWAP32C(x) << 32 | AV_BSWAP32C((x) >> 32))
+
+#define AV_BSWAPC(s, x) AV_BSWAP##s##C(x)
+
+#ifndef av_bswap16
+static av_always_inline av_const uint16_t av_bswap16(uint16_t x)
+{
+    x= (x>>8) | (x<<8);
+    return x;
+}
+#endif
+
+#ifndef av_bswap32
+static av_always_inline av_const uint32_t av_bswap32(uint32_t x)
+{
+    return AV_BSWAP32C(x);
+}
+#endif
+
+#ifndef av_bswap64
+static inline uint64_t av_const av_bswap64(uint64_t x)
+{
+    return (uint64_t)av_bswap32(x) << 32 | av_bswap32(x >> 32);
+}
+#endif
+
+// be2ne ... big-endian to native-endian
+// le2ne ... little-endian to native-endian
+
+#if AV_HAVE_BIGENDIAN
+#define av_be2ne16(x) (x)
+#define av_be2ne32(x) (x)
+#define av_be2ne64(x) (x)
+#define av_le2ne16(x) av_bswap16(x)
+#define av_le2ne32(x) av_bswap32(x)
+#define av_le2ne64(x) av_bswap64(x)
+#define AV_BE2NEC(s, x) (x)
+#define AV_LE2NEC(s, x) AV_BSWAPC(s, x)
+#else
+#define av_be2ne16(x) av_bswap16(x)
+#define av_be2ne32(x) av_bswap32(x)
+#define av_be2ne64(x) av_bswap64(x)
+#define av_le2ne16(x) (x)
+#define av_le2ne32(x) (x)
+#define av_le2ne64(x) (x)
+#define AV_BE2NEC(s, x) AV_BSWAPC(s, x)
+#define AV_LE2NEC(s, x) (x)
+#endif
+
+#define AV_BE2NE16C(x) AV_BE2NEC(16, x)
+#define AV_BE2NE32C(x) AV_BE2NEC(32, x)
+#define AV_BE2NE64C(x) AV_BE2NEC(64, x)
+#define AV_LE2NE16C(x) AV_LE2NEC(16, x)
+#define AV_LE2NE32C(x) AV_LE2NEC(32, x)
+#define AV_LE2NE64C(x) AV_LE2NEC(64, x)
+
+#endif /* AVUTIL_BSWAP_H */
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           /*
+ * This file is part of FFmpeg.
+ *
+ * FFmpeg is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * FFmpeg is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with FFmpeg; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
+
+/**
+ * @file
+ * @ingroup lavu_buffer
+ * refcounted data buffer API
+ */
+
+#ifndef AVUTIL_BUFFER_H
+#define AVUTIL_BUFFER_H
+
+#include <stdint.h>
+
+/**
+ * @defgroup lavu_buffer AVBuffer
+ * @ingroup lavu_data
+ *
+ * @{
+ * AVBuffer is an API for reference-counted data buffers.
+ *
+ * There are two core objects in this API -- AVBuffer and AVBufferRef. AVBuffer
+ * represents the data buffer itself; it is opaque and not meant to be accessed
+ * by the caller directly, but only through AVBufferRef. However, the caller may
+ * e.g. compare two AVBuffer pointers to check whether two different references
+ * are describing the same data buffer. AVBufferRef represents a single
+ * reference to an AVBuffer and it is the object that may be manipulated by the
+ * caller directly.
+ *
+ * There are two functions provided for creating a new AVBuffer with a single
+ * reference -- av_buffer_alloc() to just allocate a new buffer, and
+ * av_buffer_create() to wrap an existing array in an AVBuffer. From an existing
+ * reference, additional references may be created with av_buffer_ref().
+ * Use av_buffer_unref() to free a reference (this will automatically free the
+ * data once all the references are freed).
+ *
+ * The convention throughout this API and the rest of FFmpeg is such that the
+ * buffer is considered writable if there exists only one reference to it (and
+ * it has not been marked as read-only). The av_buffer_is_writable() function is
+ * provided to check whether this is true and av_buffer_make_writable() will
+ * automatically create a new writable buffer when necessary.
+ * Of course nothing prevents the calling code from violating this convention,
+ * however that is safe only when all the existing references are under its
+ * control.
+ *
+ * @note Referencing and unreferencing the buffers is thread-safe and thus
+ * may be done from multiple threads simultaneously without any need for
+ * additional locking.
+ *
+ * @note Two different references to the same buffer can point to different
+ * parts of the buffer (i.e. their AVBufferRef.data will not be equal).
+ */
+
+/**
+ * A reference counted buffer type. It is opaque and is meant to be used through
+ * references (AVBufferRef).
+ */
+typedef struct AVBuffer AVBuffer;
+
+/**
+ * A reference to a data buffer.
+ *
+ * The size of this struct is not a part of the public ABI and it is not meant
+ * to be allocated directly.
+ */
+typedef struct AVBufferRef {
+    AVBuffer *buffer;
+
+    /**
+     * The data buffer. It is considered writable if and only if
+     * this is the only reference to the buffer, in which case
+     * av_buffer_is_writable() returns 1.
+     */
+    uint8_t *data;
+    /**
+     * Size of data in bytes.
+     */
+    int      size;
+} AVBufferRef;
+
+/**
+ * Allocate an AVBuffer of the given size using av_malloc().
+ *
+ * @return an AVBufferRef of given size or NULL when out of memory
+ */
+AVBufferRef *av_buffer_alloc(int size);
+
+/**
+ * Same as av_buffer_alloc(), except the returned buffer will be initialized
+ * to zero.
+ */
+AVBufferRef *av_buffer_allocz(int size);
+
+/**
+ * Always treat the buffer as read-only, even when it has only one
+ * reference.
+ */
+#define AV_BUFFER_FLAG_READONLY (1 << 0)
+
+/**
+ * Create an AVBuffer from an existing array.
+ *
+ * If this function is successful, data is owned by the AVBuffer. The caller may
+ * only access data through the returned AVBufferRef and references derived from
+ * it.
+ * If this function fails, data is left untouched.
+ * @param data   data array
+ * @param size   size of data in bytes
+ * @param free   a callback for freeing this buffer's data
+ * @param opaque parameter to be got for processing or passed to free
+ * @param flags  a combination of AV_BUFFER_FLAG_*
+ *
+ * @return an AVBufferRef referring to data on success, NULL on failure.
+ */
+AVBufferRef *av_buffer_create(uint8_t *data, int size,
+                              void (*free)(void *opaque, uint8_t *data),
+                              void *opaque, int flags);
+
+/**
+ * Default free callback, which calls av_free() on the buffer data.
+ * This function is meant to be passed to av_buffer_create(), not called
+ * directly.
+ */
+void av_buffer_default_free(void *opaque, uint8_t *data);
+
+/**
+ * Create a new reference to an AVBuffer.
+ *
+ * @return a new AVBufferRef referring to the same AVBuffer as buf or NULL on
+ * failure.
+ */
+AVBufferRef *av_buffer_ref(AVBufferRef *buf);
+
+/**
+ * Free a given reference and automatically free the buffer if there are no more
+ * references to it.
+ *
+ * @param buf the reference to be freed. The pointer is set to NULL on return.
+ */
+void av_buffer_unref(AVBufferRef **buf);
+
+/**
+ * @return 1 if the caller may write to the data referred to by buf (which is
+ * true if and only if buf is the only reference to the underlying AVBuffer).
+ * Return 0 otherwis
