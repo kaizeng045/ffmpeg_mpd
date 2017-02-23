@@ -21,7 +21,11 @@ struct Audio_info{
 	string URL;
 	string audiosamplerate;
 	string startwithSAP;
-
+	string startNumber;
+	string timescale;
+	string duration;
+	string media;
+	string initialization;
 };
 
 struct Video_info{
@@ -41,6 +45,11 @@ struct Video_info{
 	string maxframerate;
 	string par;
 	string URL;
+	string startNumber;
+	string timescale;
+	string duration;
+	string media;
+	string initialization;
 };
 class MPD_parser
 {
@@ -53,12 +62,12 @@ public:
 //
 //	int mpdparser(char* path, std::string* fname);
 //=======
-	string baseURL;
+	string masterURL;
 	vector<Audio_info> audio;
 	vector<Video_info> video;
 	int mpd2file(string mpdpath, string* fname_in);
 	int mpdparser(string path, string* fname);
-	int mpdparser_libxml2(string path, string* fname);
+	int mpdparser_libxml2(string path, string* fname, string mpdpath);
 //>>>>>>> Stashed changes
 };
 

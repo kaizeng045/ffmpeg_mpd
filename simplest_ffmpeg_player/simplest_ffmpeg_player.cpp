@@ -9,30 +9,32 @@
 //Windows
 extern "C"
 {
-#include "libavcodec/avcodec.h"
-#include "libavformat/avformat.h"
-#include "libswscale/swscale.h"
-#include "SDL2/SDL.h"
+
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libswscale/swscale.h>
+#include <SDL2/SDL.h>
+
 };
 #else
 //Linux...
 #ifdef __cplusplus
 extern "C"
 {
-#endif
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libswscale/swscale.h>
-#include <SDL2/SDL.h>
-#ifdef __cplusplus
+
+#include "libavcodec/avcodec.h"
+#include "libavformat/avformat.h"
+#include "libswscale/swscale.h"
+#include "SDL2/SDL.h"
 };
+#endif 
 #endif
-#endif
+
 
 using namespace std;
 
 //Output YUV420P data as a file 
-#define OUTPUT_YUV420P 1
+//#define OUTPUT_YUV420P 1
 
 int main(int argc, char* argv[])
 {
@@ -65,12 +67,15 @@ int main(int argc, char* argv[])
 //=======
 	//char filepath_org[] = "F:\\Kai\\SQM\\HTTP\\DASH\\sample3\\MultiRate.mpd";
 	//int video_id = 3;
-	string filepath_org = "http://dash.edgesuite.net/dash264/TestCases/1a/netflix/exMPD_BIP_TC1.mpd";
+	string filepath_org = "http://rdmedia.bbc.co.uk/dash/ondemand/testcard/1/client_manifest-events.mpd";
+	//string filepath_org = "http://dash.edgesuite.net/dash264/TestCases/1a/sony/SNE_DASH_SD_CASE1A_REVISED.mpd";
+	//string filepath_org = "http://dash.edgesuite.net/dash264/TestCases/1a/netflix/exMPD_BIP_TC1.mpd";
 	MPD_parser* mpd_parser = new MPD_parser;
 	string fname_in, fname_out;
 	int ret2 = mpd_parser->mpd2file(filepath_org, &fname_in);
-	int ret1 = mpd_parser->mpdparser_libxml2(fname_in, &fname_out);
-	const char* filepath = fname_out.c_str();
+	int ret1 = mpd_parser->mpdparser_libxml2(fname_in, &fname_out, filepath_org);
+	string addr = mpd_parser->masterURL + mpd_parser->video.front().URL;
+	const char* filepath = addr.c_str();
 //>>>>>>> Stashed changes
 
 	//SDL---------------------------

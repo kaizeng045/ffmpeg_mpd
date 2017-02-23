@@ -187,6 +187,22 @@ _xmlNode* str(_xmlNode * child, string target){
 	return child;
 }
 
+/*
+count the number of children
+*/
+int counter(_xmlNode * child){
+	int count = 0;
+	while (child->children != NULL){
+		ostringstream os1;
+		os1 << child->children->name;
+		string str = os1.str();
+		if (str == "InbandEventStream" || str == "Role" || str == "BaseURL" || str == "SegmentTemplate" || str == "Representation" || str == "AudioChannelConfiguration"){
+			count++;
+		}
+		child->children = child->children->next;
+	}
+	return count;
+}
 
 /*
 this is to check if current children name is target.
@@ -202,9 +218,29 @@ bool this_one(_xmlNode * child, string target){
 /*
 this is for returning xmlchar as std::string
 */
-string eql(xmlChar* xmlchar){
+string eql(_xmlNode* xml, string mpdpath){
+	if (xml == NULL){
+		size_t found = mpdpath.find_last_of("/");
+		string root;
+		root = mpdpath.substr(0, found + 1);
+		return root;
+	}
 	ostringstream os;
-	os << xmlchar;
+	os << xml->children->content;
+	string name = os.str();
+	return name;
+}
+
+
+string eql1(_xmlNode* xml, string mpdpath){
+	if (xml == NULL){
+		size_t found = mpdpath.find_last_of("/");
+		string root;
+		root = mpdpath.substr(found, mpdpath.length());
+		return root;
+	}
+	ostringstream os;
+	os << xml->children->content;
 	string name = os.str();
 	return name;
 }
@@ -307,7 +343,7 @@ Audio_info copy_audio(Audio_info sour){
 }
 
 
-int MPD_parser::mpdparser_libxml2(string path, string* fname){
+int MPD_parser::mpdparser_libxml2(string path, string* fname, string mpdpath){
 	/*
 	* this initialize the library and check potential ABI mismatches
 	* between the version it was compiled for and the actual shared
@@ -329,10 +365,11 @@ int MPD_parser::mpdparser_libxml2(string path, string* fname){
 	Saving BaseURL into baseURL field in class MPD_parser
 	*/
 	_xmlNode* child = doc->children->children;
+	_xmlNode child2 = * child;
 	_xmlNode* child1 = str(child, "BaseURL");
-	baseURL = eql(child1->children->content);
-
-
+	masterURL = eql(child1, mpdpath);
+	* child = child2;
+	
 	child1 = str(child, "Period");
 	while (child1->children != NULL){
 		/*
@@ -341,10 +378,11 @@ int MPD_parser::mpdparser_libxml2(string path, string* fname){
 
 		//string audio = eql((xmlChar *)childAudio);
 		if (this_one(child1->children, "AdaptationSet") && type(str(child1->children, "AdaptationSet"), "mimeType").substr(0, 5) == "audio"){
+			vector<Audio_info> ado;
 			_xmlNode* childAudio = str(child1->children, "AdaptationSet");
 			_xmlNode childAudio0 = *childAudio;
-			int number = times(childAudio0.children);
-
+			int number = counter(childAudio);
+			*childAudio = childAudio0;
 			Audio_info ad;
 			_xmlNode childAudio1 = *childAudio;
 			if (exist(childAudio, "mimeType")){
@@ -381,12 +419,41 @@ int MPD_parser::mpdparser_libxml2(string path, string* fname){
 			if (exist(childAudio, "startWithSAP")){
 				ad.startwithSAP = type(childAudio, "startWithSAP");
 			}
+			*childAudio = childAudio1;
+			Audio_info ad2;
+			_xmlNode * childAudio4 = str(childAudio->children, "SegmentTemplate");
+			_xmlNode childAudio5 = *childAudio4;
+			if (exist(childAudio4, "startNumber")) {
+				ad2.startNumber = type(childAudio4, "startNumber");
+			}
+			*childAudio4 = childAudio5;
+			if (exist(childAudio4, "timescale")) {
+				ad2.timescale = type(childAudio4, "timescale");
+			}
+			*childAudio4 = childAudio5;
+			if (exist(childAudio4, "duration")) {
+				ad2.duration = type(childAudio4, "duration");
+			}
+			*childAudio4 = childAudio5;
+			if (exist(childAudio4, "media")) {
+				ad2.media = type(childAudio4, "media");
+			}
+			*childAudio4 = childAudio5;
+			if (exist(childAudio4, "initialization")) {
+				ad2.initialization = type(childAudio4, "initialization");
+			}
+			*childAudio4 = childAudio5;
+
 			for (int i = 0; i < number; i++){
 				Audio_info ad1;
 				ad1 = copy_audio(ad);
 				_xmlNode * childAudio3 = str(childAudio->children, "Representation");
 				_xmlNode  childAudio2 = *childAudio3;
-
+				ad1.startNumber = ad2.startNumber;
+				ad1.timescale = ad2.timescale;
+				ad1.duration = ad2.duration;
+				ad1.media = ad2.media;
+				ad1.initialization = ad2.initialization;
 				if (exist(childAudio3, "mimeType")) {
 					ad1.mimeType = type(childAudio3, "mimeType");
 				}
@@ -431,12 +498,22 @@ int MPD_parser::mpdparser_libxml2(string path, string* fname){
 					ad1.startwithSAP = type(childAudio3, "startWithSAP");
 				}
 				*childAudio3 = childAudio2;
-
-				_xmlNode * childAudio4 = str(childAudio3->children, "BaseURL");
-				ad1.URL = eql(childAudio4->children->content);
-				audio.push_back(ad1);
+				
+				_xmlNode * childAudio6 = str(childAudio3->children, "BaseURL");
+				ad1.URL = eql1(childAudio6, mpdpath);
+				ado.push_back(ad1);
 				childAudio->children = childAudio->children->next->next;
 			}
+			int time = times(childAudio0.children);
+			for (int i = 0; i < ado.size(); i++){
+				if (i > ado.size()) break;
+				Audio_info vec = ado[i];
+				if (i <= (time - ado.size()) && i > 0){
+					ado.erase(ado.begin() + i);
+					i--;
+				}
+			}
+			audio.insert(audio.end(), ado.begin(), ado.end());
 			child1->children = child1->children->next;
 		}
 
@@ -444,10 +521,11 @@ int MPD_parser::mpdparser_libxml2(string path, string* fname){
 		Save Video
 		*/
 		else if (this_one(child1->children, "AdaptationSet") && type(str(child1->children, "AdaptationSet"), "mimeType").substr(0, 5) == "video"){
+			vector<Video_info> vdo;
 			_xmlNode * childVideo = str(child1->children, "AdaptationSet");
 			_xmlNode childVideo0 = *childVideo;
-			int number = times(childVideo0.children);
-
+			int number = counter(childVideo);
+			*childVideo = childVideo0;
 			Video_info vd;
 			_xmlNode childVideo1 = *childVideo;
 			if (exist(childVideo, "mimeType")){
@@ -509,11 +587,41 @@ int MPD_parser::mpdparser_libxml2(string path, string* fname){
 			if (exist(childVideo, "par")){
 				vd.id = type(childVideo, "par");
 			}
+			*childVideo = childVideo1;
+			Video_info vd2;
+			_xmlNode *childVideo4 = str(childVideo->children, "SegmentTemplate");
+			_xmlNode childVideo5 = *childVideo4;
+			if (exist(childVideo4, "startNumber")) {
+				vd2.startNumber = type(childVideo4, "startNumber");
+			}
+			*childVideo4 = childVideo5;
+			if (exist(childVideo4, "timescale")) {
+				vd2.timescale = type(childVideo4, "timescale");
+			}
+			*childVideo4 = childVideo5;
+			if (exist(childVideo4, "duration")) {
+				vd2.duration = type(childVideo4, "duration");
+			}
+			*childVideo4 = childVideo5;
+			if (exist(childVideo4, "media")) {
+				vd2.media = type(childVideo4, "media");
+			}
+			*childVideo4 = childVideo5;
+			if (exist(childVideo4, "initialization")) {
+				vd2.initialization = type(childVideo4, "initialization");
+			}
+			*childVideo4 = childVideo5;
+
 			for (int i = 0; i < number; i++){
 				Video_info vd1;
 				vd1 = copy(vd);
 				_xmlNode * childVideo3 = str(childVideo->children, "Representation");
 				_xmlNode  childVideo2 = *childVideo3;
+				vd1.startNumber = vd2.startNumber;
+				vd1.timescale = vd2.timescale;
+				vd1.media = vd2.media;
+				vd1.duration = vd2.duration;
+				vd1.initialization = vd2.initialization;
 				if (exist(childVideo3, "mimeType")){
 					vd1.mimeType = type(childVideo, "mimeType");
 				}
@@ -573,11 +681,22 @@ int MPD_parser::mpdparser_libxml2(string path, string* fname){
 				if (exist(childVideo3, "par")){
 					vd1.par = type(childVideo3, "par");
 				}
-				_xmlNode * childVideo4 = str(childVideo3->children, "BaseURL");
-				vd1.URL = eql(childVideo4->children->content);
-				video.push_back(vd1);
+				
+				_xmlNode * childVideo6 = str(childVideo3->children, "BaseURL");
+				vd1.URL = eql1(childVideo6, mpdpath);
+				vdo.push_back(vd1);
 				childVideo->children = childVideo->children->next->next;
 			}
+			int time = times(childVideo0.children);
+			for (int i = 0; i < vdo.size(); i++){
+				if (i > vdo.size()) break;
+				Video_info vec = vdo[i];
+				if (i <= (time - vdo.size()) && i > 0){
+					vdo.erase(vdo.begin() + i);
+					i--;
+				}
+			}
+			video.insert(video.end(), vdo.begin(), vdo.end());
 			child1->children = child1->children->next;
 		}
 		else{
