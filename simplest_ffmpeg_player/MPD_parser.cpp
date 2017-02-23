@@ -188,6 +188,24 @@ _xmlNode* str(_xmlNode * child, string target){
 }
 
 /*
+to check if there exist some member of _xmlNode
+*/
+bool member(_xmlNode * child, string target){
+	while (child != NULL){
+		ostringstream os1;
+		os1 << child->name;
+		string str = os1.str();
+		if (str == target){
+			return true;
+		}
+		else{
+			child = child->next;
+		}
+	}
+	return false;
+}
+
+/*
 count the number of children
 */
 int counter(_xmlNode * child){
@@ -246,7 +264,7 @@ string eql1(_xmlNode* xml, string mpdpath){
 }
 
 /*
-this is to return the prooerties named target of a current children
+this is to return the properties named target of a current children
 such as, return audio's codec, mimeType etc.
 */
 string type(_xmlNode* xml, string target){
@@ -421,28 +439,31 @@ int MPD_parser::mpdparser_libxml2(string path, string* fname, string mpdpath){
 			}
 			*childAudio = childAudio1;
 			Audio_info ad2;
-			_xmlNode * childAudio4 = str(childAudio->children, "SegmentTemplate");
-			_xmlNode childAudio5 = *childAudio4;
-			if (exist(childAudio4, "startNumber")) {
-				ad2.startNumber = type(childAudio4, "startNumber");
+			if (member(childAudio, "SegmentTemplate")){
+				*childAudio = childAudio1;
+				_xmlNode * childAudio4 = str(childAudio->children, "SegmentTemplate");
+				_xmlNode childAudio5 = *childAudio4;
+				if (exist(childAudio4, "startNumber")) {
+					ad2.startNumber = type(childAudio4, "startNumber");
+				}
+				*childAudio4 = childAudio5;
+				if (exist(childAudio4, "timescale")) {
+					ad2.timescale = type(childAudio4, "timescale");
+				}
+				*childAudio4 = childAudio5;
+				if (exist(childAudio4, "duration")) {
+					ad2.duration = type(childAudio4, "duration");
+				}
+				*childAudio4 = childAudio5;
+				if (exist(childAudio4, "media")) {
+					ad2.media = type(childAudio4, "media");
+				}
+				*childAudio4 = childAudio5;
+				if (exist(childAudio4, "initialization")) {
+					ad2.initialization = type(childAudio4, "initialization");
+				}
+				*childAudio4 = childAudio5;
 			}
-			*childAudio4 = childAudio5;
-			if (exist(childAudio4, "timescale")) {
-				ad2.timescale = type(childAudio4, "timescale");
-			}
-			*childAudio4 = childAudio5;
-			if (exist(childAudio4, "duration")) {
-				ad2.duration = type(childAudio4, "duration");
-			}
-			*childAudio4 = childAudio5;
-			if (exist(childAudio4, "media")) {
-				ad2.media = type(childAudio4, "media");
-			}
-			*childAudio4 = childAudio5;
-			if (exist(childAudio4, "initialization")) {
-				ad2.initialization = type(childAudio4, "initialization");
-			}
-			*childAudio4 = childAudio5;
 
 			for (int i = 0; i < number; i++){
 				Audio_info ad1;
@@ -589,29 +610,32 @@ int MPD_parser::mpdparser_libxml2(string path, string* fname, string mpdpath){
 			}
 			*childVideo = childVideo1;
 			Video_info vd2;
-			_xmlNode *childVideo4 = str(childVideo->children, "SegmentTemplate");
-			_xmlNode childVideo5 = *childVideo4;
-			if (exist(childVideo4, "startNumber")) {
-				vd2.startNumber = type(childVideo4, "startNumber");
-			}
-			*childVideo4 = childVideo5;
-			if (exist(childVideo4, "timescale")) {
-				vd2.timescale = type(childVideo4, "timescale");
-			}
-			*childVideo4 = childVideo5;
-			if (exist(childVideo4, "duration")) {
-				vd2.duration = type(childVideo4, "duration");
-			}
-			*childVideo4 = childVideo5;
-			if (exist(childVideo4, "media")) {
-				vd2.media = type(childVideo4, "media");
-			}
-			*childVideo4 = childVideo5;
-			if (exist(childVideo4, "initialization")) {
-				vd2.initialization = type(childVideo4, "initialization");
-			}
-			*childVideo4 = childVideo5;
 
+			if (member(childVideo, "SegmentTemplate")){
+				*childVideo = childVideo1;
+				_xmlNode *childVideo4 = str(childVideo->children, "SegmentTemplate");
+				_xmlNode childVideo5 = *childVideo4;
+				if (exist(childVideo4, "startNumber")) {
+					vd2.startNumber = type(childVideo4, "startNumber");
+				}
+				*childVideo4 = childVideo5;
+				if (exist(childVideo4, "timescale")) {
+					vd2.timescale = type(childVideo4, "timescale");
+				}
+				*childVideo4 = childVideo5;
+				if (exist(childVideo4, "duration")) {
+					vd2.duration = type(childVideo4, "duration");
+				}
+				*childVideo4 = childVideo5;
+				if (exist(childVideo4, "media")) {
+					vd2.media = type(childVideo4, "media");
+				}
+				*childVideo4 = childVideo5;
+				if (exist(childVideo4, "initialization")) {
+					vd2.initialization = type(childVideo4, "initialization");
+				}
+				*childVideo4 = childVideo5;
+			}
 			for (int i = 0; i < number; i++){
 				Video_info vd1;
 				vd1 = copy(vd);
