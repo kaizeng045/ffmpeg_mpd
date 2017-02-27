@@ -15,6 +15,7 @@
 #include <vector>
 #include <sstream>
 #include <vector>
+#include <iomanip>
 
 using namespace std;
 
@@ -191,15 +192,15 @@ _xmlNode* str(_xmlNode * child, string target){
 to check if there exist some member of _xmlNode
 */
 bool member(_xmlNode * child, string target){
-	while (child != NULL){
+	while (child->children != NULL){
 		ostringstream os1;
-		os1 << child->name;
+		os1 << child->children->name;
 		string str = os1.str();
 		if (str == target){
 			return true;
 		}
 		else{
-			child = child->next;
+			child->children = child->children->next;
 		}
 	}
 	return false;
@@ -252,10 +253,7 @@ string eql(_xmlNode* xml, string mpdpath){
 
 string eql1(_xmlNode* xml, string mpdpath){
 	if (xml == NULL){
-		size_t found = mpdpath.find_last_of("/");
-		string root;
-		root = mpdpath.substr(found, mpdpath.length());
-		return root;
+		return "";
 	}
 	ostringstream os;
 	os << xml->children->content;
@@ -323,6 +321,65 @@ int times(_xmlNode * xml){
 	}
 	return counter;
 }
+
+
+/*
+do mutation to segmentTemplate case
+*/
+Video_info mutate(Video_info vd){
+	if (vd.media.substr(0, 18) == "$RepresentationID$"){
+		int duration = stoi(vd.duration);
+		for (int i = 0; i < duration + 1; i++){
+			if (i == 0){
+				string str = vd.id + "/" + vd.initialization.substr(19, vd.initialization.size());
+				vd.URL.push_back(str);
+			}
+			else{
+				size_t found = vd.media.find_first_of("0123456789");
+				string sub = vd.media.substr(found, vd.media.size());
+				size_t found1 = sub.find_first_not_of("0123456789");
+				string digi = vd.media.substr(found, found1);
+				int dig = stoi(digi);
+				stringstream ss;
+				ss << setfill('0') << setw(dig) << (i - 1);
+				string s = ss.str();
+				size_t found2 = vd.media.find_first_of(".");
+				string type = vd.media.substr(found2, vd.media.size());
+				string str = vd.id + "/" + s + type;
+				vd.URL.push_back(str);
+			}
+		}
+	}
+	return vd;
+}
+
+Audio_info mutate1(Audio_info vd){
+	if (vd.media.substr(0, 18) == "$RepresentationID$"){
+		int duration = stoi(vd.duration);
+		for (int i = 0; i < duration + 1; i++){
+			if (i == 0){
+				string str = vd.id + "/" + vd.initialization.substr(19, vd.initialization.size());
+				vd.URL.push_back(str);
+			}
+			else{
+				size_t found = vd.media.find_first_of("0123456789");
+				string sub = vd.media.substr(found, vd.media.size());
+				size_t found1 = sub.find_first_not_of("0123456789");
+				string digi = vd.media.substr(found, found1);
+				int dig = stoi(digi);
+				stringstream ss;
+				ss << setfill('0') << setw(dig) << (i - 1);
+				string s = ss.str();
+				size_t found2 = vd.media.find_first_of(".");
+				string type = vd.media.substr(found2, vd.media.size());
+				string str = vd.id + "/" + s + type;
+				vd.URL.push_back(str);
+			}
+		}
+	}
+	return vd;
+}
+
 
 Video_info copy(Video_info sour){
 	Video_info dest;
@@ -464,7 +521,7 @@ int MPD_parser::mpdparser_libxml2(string path, string* fname, string mpdpath){
 				}
 				*childAudio4 = childAudio5;
 			}
-
+			*childAudio = childAudio1;
 			for (int i = 0; i < number; i++){
 				Audio_info ad1;
 				ad1 = copy_audio(ad);
@@ -521,7 +578,13 @@ int MPD_parser::mpdparser_libxml2(string path, string* fname, string mpdpath){
 				*childAudio3 = childAudio2;
 				
 				_xmlNode * childAudio6 = str(childAudio3->children, "BaseURL");
-				ad1.URL = eql1(childAudio6, mpdpath);
+				_xmlNode childAudio7 = childAudio1;
+				if (member(&childAudio7, "SegmentTemplate")){
+					ad1 = mutate1(ad1);
+				}
+				else{
+					ad1.URL.push_back(eql1(childAudio6, mpdpath));
+				}
 				ado.push_back(ad1);
 				childAudio->children = childAudio->children->next->next;
 			}
@@ -636,6 +699,7 @@ int MPD_parser::mpdparser_libxml2(string path, string* fname, string mpdpath){
 				}
 				*childVideo4 = childVideo5;
 			}
+			*childVideo = childVideo1;
 			for (int i = 0; i < number; i++){
 				Video_info vd1;
 				vd1 = copy(vd);
@@ -707,7 +771,13 @@ int MPD_parser::mpdparser_libxml2(string path, string* fname, string mpdpath){
 				}
 				
 				_xmlNode * childVideo6 = str(childVideo3->children, "BaseURL");
-				vd1.URL = eql1(childVideo6, mpdpath);
+				_xmlNode childVideo7 = childVideo1;
+				if (member(&childVideo7, "SegmentTemplate")){
+					vd1 = mutate(vd1);
+				}
+				else{
+					vd1.URL.push_back(eql1(childVideo6, mpdpath));
+				}
 				vdo.push_back(vd1);
 				childVideo->children = childVideo->children->next->next;
 			}

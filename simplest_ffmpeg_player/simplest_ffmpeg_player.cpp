@@ -67,14 +67,14 @@ int main(int argc, char* argv[])
 //=======
 	//char filepath_org[] = "F:\\Kai\\SQM\\HTTP\\DASH\\sample3\\MultiRate.mpd";
 	//int video_id = 3;
-	string filepath_org = "http://rdmedia.bbc.co.uk/dash/ondemand/testcard/1/client_manifest-events.mpd";
+	//string filepath_org = "http://rdmedia.bbc.co.uk/dash/ondemand/testcard/1/client_manifest-events.mpd";
 	//string filepath_org = "http://dash.edgesuite.net/dash264/TestCases/1a/sony/SNE_DASH_SD_CASE1A_REVISED.mpd";
-	//string filepath_org = "http://dash.edgesuite.net/dash264/TestCases/1a/netflix/exMPD_BIP_TC1.mpd";
+	string filepath_org = "http://dash.edgesuite.net/dash264/TestCases/1a/netflix/exMPD_BIP_TC1.mpd";
 	MPD_parser* mpd_parser = new MPD_parser;
 	string fname_in, fname_out;
 	int ret2 = mpd_parser->mpd2file(filepath_org, &fname_in);
 	int ret1 = mpd_parser->mpdparser_libxml2(fname_in, &fname_out, filepath_org);
-	string addr = mpd_parser->masterURL + mpd_parser->video.front().URL;
+	string addr = mpd_parser->masterURL + mpd_parser->video.front().URL[2];
 	const char* filepath = addr.c_str();
 //>>>>>>> Stashed changes
 

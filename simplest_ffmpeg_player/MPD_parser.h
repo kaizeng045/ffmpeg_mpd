@@ -18,7 +18,7 @@ struct Audio_info{
 	string subsegmentStartwithSAP;
 	string id;
 	string bandwidth;
-	string URL;
+	vector<string> URL;
 	string audiosamplerate;
 	string startwithSAP;
 	string startNumber;
@@ -44,7 +44,7 @@ struct Video_info{
 	string maxheight;
 	string maxframerate;
 	string par;
-	string URL;
+	vector<string> URL;
 	string startNumber;
 	string timescale;
 	string duration;
