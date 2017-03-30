@@ -76,7 +76,7 @@ int main(int argc, char* argv[])
 	int ret1 = mpd_parser->mpdparser_libxml2(fname_in, &fname_out, filepath_org);
 	string addr = mpd_parser->masterURL + mpd_parser->video.front().URL[2];
 	const char* filepath = addr.c_str();
-	print("test");
+	
 //>>>>>>> Stashed changes
 
 	//SDL---------------------------
